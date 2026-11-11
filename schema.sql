@@ -15,7 +15,8 @@ CREATE TABLE Customers(
     Email NVARCHAR(120),
     Address NVARCHAR(250),
     CreatedAt DATETIME2 DEFAULT SYSDATETIME(),
-    IsActive BIT DEFAULT 1
+    IsActive BIT DEFAULT 1,
+    CONSTRAINT UQ_Customers_Email UNIQUE (Email)
 );
 GO
 
@@ -122,22 +123,16 @@ CREATE TABLE AuditLogs(
 GO
 
 -- DEFAULT FRAUD RULES
-
 INSERT INTO FraudRules
 (RuleName, RuleType, ThresholdValue, TimeWindowMinutes)
-
 VALUES
 ('High Value Transaction', 'HighAmount', 50000, 60),
-
 ('Frequent Transactions', 'Frequent', 5, 10),
-
 ('Repeated Same Amount', 'RepeatedAmount', 3, 60);
 GO
 
 -- ACCOUNT SUMMARY VIEW
-
 CREATE VIEW vw_AccountSummary AS
-
 SELECT
     a.AccountID,
     a.AccountNumber,
@@ -145,14 +140,11 @@ SELECT
     a.Balance,
     a.Currency,
     a.IsActive,
-
     c.CustomerID,
     c.FirstName,
     c.LastName,
     c.NationalID
-
 FROM Accounts a
-
 JOIN Customers c
-ON a.CustomerID = c.CustomerID;
+    ON a.CustomerID = c.CustomerID;
 GO
