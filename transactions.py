@@ -3,6 +3,7 @@ from core import *
 
 
 class TransactionsMixin:
+
     def transact(
         self,
         kind,
@@ -22,48 +23,89 @@ class TransactionsMixin:
                 "Invalid transaction type."
             )
 
-        if (
-            session["role"] == "Customer"
-            and kind == "Deposit"
-        ):
-            raise PermissionError(
-                "Deposits require Admin verification."
-            )
-
         try:
             source = int(source)
+            if source <= 0:
+                raise ValueError()
         except (ValueError, TypeError):
             raise ValueError(
-                "Valid source Account ID is required."
+                "Valid source account is required."
             )
 
         amount = money(value)
 
-        if kind == "Transfer":
-            try:
-                destination = int(destination)
-            except (ValueError, TypeError):
-                raise ValueError(
-                    "Valid destination Account ID is required."
-                )
+        description = (
+            "" if description is None
+            else str(description).strip()
+        )
 
-            if source == destination:
+        if len(description) > 250:
+            raise ValueError(
+                "Description cannot exceed 250 characters."
+            )
+
+        destination_number = None
+
+        if kind == "Transfer":
+            destination_number = str(
+                destination or ""
+            ).strip().upper()
+
+            if (
+                len(destination_number) != 18
+                or not destination_number.startswith("TR")
+                or not destination_number[2:].isdigit()
+            ):
                 raise ValueError(
-                    "Source and destination accounts must differ."
+                    "Enter a valid 18-character "
+                    "recipient account number."
                 )
-        else:
-            destination = None
 
         con = connect()
 
         try:
             cur = con.cursor()
 
-            ids = sorted(
-                {source, destination} - {None}
-            )
+            destination_id = None
 
+            if kind == "Transfer":
+                # Resolve the recipient's public account
+                # number to the internal AccountID.
+                #
+                # The lock is retained until commit,
+                # so the account cannot be changed
+                # concurrently during this transaction.
+                recipient = cur.execute(
+                    """
+                    SELECT AccountID
+                    FROM Accounts WITH (UPDLOCK, HOLDLOCK)
+                    WHERE AccountNumber = ?
+                    """,
+                    destination_number
+                ).fetchone()
+
+                if not recipient:
+                    raise ValueError(
+                        "Recipient account not found."
+                    )
+
+                destination_id = int(
+                    recipient.AccountID
+                )
+
+                if source == destination_id:
+                    raise ValueError(
+                        "You cannot transfer money "
+                        "to the same account."
+                    )
+
+            # Acquire account locks.
+            # Accounts are locked for the transaction.
             locked = {}
+
+            ids = sorted(
+                {source, destination_id} - {None}
+            )
 
             for account_id in ids:
                 row = cur.execute(
@@ -82,20 +124,24 @@ class TransactionsMixin:
 
                 if not row or not row.IsActive:
                     raise ValueError(
-                        f"Account {account_id} is unavailable."
+                        f"Account {account_id} "
+                        "is unavailable."
                     )
 
                 locked[account_id] = row
 
             src = locked[source]
 
-            if (
-                session["role"] == "Customer"
-                and src.CustomerID != session["customer_id"]
-            ):
-                raise PermissionError(
-                    "You cannot use another customer's source account."
-                )
+            # Customers may only initiate transactions
+            # from their own bank accounts.
+            if session["role"] == "Customer":
+                if (
+                    int(src.CustomerID)
+                    != int(session["customer_id"])
+                ):
+                    raise PermissionError(
+                        "You can only use your own account."
+                    )
 
             if kind == "Deposit":
                 cur.execute(
@@ -108,7 +154,8 @@ class TransactionsMixin:
                     source
                 )
 
-                from_id, to_id = None, source
+                from_id = None
+                to_id = source
 
             elif kind == "Withdrawal":
                 if src.Balance < amount:
@@ -126,15 +173,16 @@ class TransactionsMixin:
                     source
                 )
 
-                from_id, to_id = source, None
+                from_id = source
+                to_id = None
 
             else:
-                dst = locked[destination]
+                dst = locked[destination_id]
 
                 if src.Currency != dst.Currency:
                     raise ValueError(
-                        "Transfers between different currencies "
-                        "are not supported."
+                        "Transfers between different "
+                        "currencies are not supported."
                     )
 
                 if src.Balance < amount:
@@ -159,21 +207,22 @@ class TransactionsMixin:
                     WHERE AccountID = ?
                     """,
                     amount,
-                    destination
+                    destination_id
                 )
 
-                from_id, to_id = source, destination
+                from_id = source
+                to_id = destination_id
 
             cur.execute(
                 """
                 INSERT INTO Transactions
-                    (
-                        FromAccountID,
-                        ToAccountID,
-                        TransactionType,
-                        Amount,
-                        Description
-                    )
+                (
+                    FromAccountID,
+                    ToAccountID,
+                    TransactionType,
+                    Amount,
+                    Description
+                )
                 OUTPUT INSERTED.TransactionID
                 VALUES (?, ?, ?, ?, ?)
                 """,
@@ -181,10 +230,12 @@ class TransactionsMixin:
                 to_id,
                 kind,
                 amount,
-                description.strip()
+                description
             )
 
-            transaction_id = int(cur.fetchone()[0])
+            transaction_id = int(
+                cur.fetchone()[0]
+            )
 
             audit(
                 cur,
@@ -230,7 +281,9 @@ class TransactionsMixin:
 
             if session["role"] == "Admin":
                 return cur.execute(
-                    base + " ORDER BY t.TransactionID DESC"
+                    base + """
+                    ORDER BY t.TransactionID DESC
+                    """
                 ).fetchall()
 
             return cur.execute(

@@ -570,184 +570,337 @@ class App(ctk.CTk):
     # ACCOUNTS SCREEN
     # ============================================================
 
+
     def show_accounts(self):
         session = self.db.require_login()
-
         is_admin = session["role"] == "Admin"
 
         page = self.page(
-            "Account Management"
-            if is_admin
+            "Account Management" if is_admin
             else "My Accounts"
         )
 
-        form = ctk.CTkFrame(
-            page,
-            fg_color=CARD
+        rows = self.db.accounts()
+
+        # ==========================================
+        # ADMIN: SEARCH + DELETE ZERO-BALANCE ACCOUNT
+        # ==========================================
+        if is_admin:
+
+            search_frame = ctk.CTkFrame(
+                page,
+                fg_color=CARD,
+                corner_radius=12
+            )
+            search_frame.pack(
+                fill="x",
+                padx=18,
+                pady=10
+            )
+
+            ctk.CTkLabel(
+                search_frame,
+                text="Search Accounts by Customer Name",
+                text_color=WHITE
+            ).pack(
+                anchor="w",
+                padx=12,
+                pady=(12, 5)
+            )
+
+            search_entry = ctk.CTkEntry(
+                search_frame,
+                placeholder_text="Enter customer name...",
+                width=350
+            )
+            search_entry.pack(
+                anchor="w",
+                padx=12,
+                pady=(0, 12)
+            )
+
+            tree = self.table(
+                page,
+                (
+                    "id",
+                    "number",
+                    "customer",
+                    "balance",
+                    "currency",
+                    "status"
+                ),
+                (
+                    "Account ID",
+                    "Account Number",
+                    "Customer Name",
+                    "Balance",
+                    "Currency",
+                    "Status"
+                )
+            )
+
+            def refresh_accounts(*args):
+                search_text = (
+                    search_entry.get()
+                    .strip()
+                    .casefold()
+                )
+
+                # Remove existing rows.
+                for item in tree.get_children():
+                    tree.delete(item)
+
+                # Admin row format:
+                # 0 AccountID
+                # 1 AccountNumber
+                # 2 CustomerName
+                # 3 AccountType
+                # 4 Balance
+                # 5 Currency
+                # 6 IsActive
+
+                for row in rows:
+                    customer_name = str(row[2])
+
+                    if (
+                        search_text
+                        and search_text
+                        not in customer_name.casefold()
+                    ):
+                        continue
+
+                    status = (
+                        "Active"
+                        if bool(row[6])
+                        else "Inactive"
+                    )
+
+                    tree.insert(
+                        "",
+                        "end",
+                        values=(
+                            row[0],
+                            str(row[1]).strip(),
+                            customer_name,
+                            f"{row[4]:.2f}",
+                            str(row[5]).strip(),
+                            status
+                        )
+                    )
+
+            # Search while typing.
+            search_entry.bind(
+                "<KeyRelease>",
+                refresh_accounts
+            )
+
+            refresh_accounts()
+
+            def delete_selected():
+                def action():
+                    selected = tree.selection()
+
+                    if not selected:
+                        messagebox.showwarning(
+                            "Select Account",
+                            "Please select an account first."
+                        )
+                        return
+
+                    values = tree.item(
+                        selected[0],
+                        "values"
+                    )
+
+                    account_id = int(values[0])
+                    account_number = values[1]
+                    customer_name = values[2]
+                    balance = money(
+                        values[3],
+                        allow_zero=True
+                    )
+                    status = values[5]
+
+                    if status != "Active":
+                        raise ValueError(
+                            "This account is already inactive."
+                        )
+
+                    if balance != 0:
+                        raise ValueError(
+                            "Only accounts with 0 TRY balance "
+                            "can be deleted."
+                        )
+
+                    confirmed = messagebox.askyesno(
+                        "Confirm Account Deletion",
+                        (
+                            "Deactivate this bank account?\n\n"
+                            f"Customer: {customer_name}\n"
+                            f"Account: {account_number}\n"
+                            f"Balance: {balance:.2f} TRY\n\n"
+                            "Transaction history will be preserved."
+                        )
+                    )
+
+                    if not confirmed:
+                        return
+
+                    self.db.delete_account(
+                        account_id
+                    )
+
+                    messagebox.showinfo(
+                        "Success",
+                        "Account deactivated successfully."
+                    )
+
+                    self.show_accounts()
+
+                self.run(action)
+
+            self.button(
+                page,
+                "Delete Selected Account",
+                delete_selected
+            ).pack(
+                pady=(12, 5)
+            )
+
+            self.button(
+                page,
+                "Refresh Accounts",
+                lambda: self.run(
+                    self.show_accounts
+                )
+            ).pack(
+                pady=(0, 12)
+            )
+
+            return
+
+        # ==========================================
+        # CUSTOMER: VIEW + CREATE OWN ACCOUNTS
+        # ==========================================
+
+        active_count = sum(
+            1
+            for row in rows
+            if bool(row[5])
         )
 
-        form.pack(
+        info_frame = ctk.CTkFrame(
+            page,
+            fg_color=CARD,
+            corner_radius=12
+        )
+        info_frame.pack(
             fill="x",
             padx=18,
-            pady=8
+            pady=10
         )
 
-        customer_map = {}
-        customer_combo = None
-
-        if is_admin:
-            customers = self.db.customer_choices()
-
-            customer_map = {
-                f"{c.CustomerID} - {c.FirstName} {c.LastName}":
-                    int(c.CustomerID)
-                for c in customers
-            }
-
-            customer_combo = ctk.CTkComboBox(
-                form,
-                values=list(customer_map) or ["No customers"],
-                width=270,
-                state="readonly"
-            )
-
-            customer_combo.pack(
-                side="left",
-                padx=8,
-                pady=14
-            )
-
-        account_type = ctk.CTkComboBox(
-            form,
-            values=[
-                "Checking",
-                "Savings"
-            ],
-            width=145,
-            state="readonly"
+        ctk.CTkLabel(
+            info_frame,
+            text=(
+                f"Active Accounts: "
+                f"{active_count} / 3"
+            ),
+            text_color=WHITE,
+            font=("Arial", 16, "bold")
+        ).pack(
+            anchor="w",
+            padx=12,
+            pady=12
         )
-
-        account_type.pack(
-            side="left",
-            padx=8,
-            pady=14
-        )
-
-        opening = None
-
-        if is_admin:
-            opening = ctk.CTkEntry(
-                form,
-                placeholder_text="Opening balance",
-                width=155
-            )
-
-            opening.pack(
-                side="left",
-                padx=8
-            )
 
         def create_account():
             def action():
-                if is_admin:
-                    selected = customer_combo.get()
-
-                    if selected not in customer_map:
-                        raise ValueError(
-                            "Please select a customer."
-                        )
-
-                    customer_id = customer_map[selected]
-                    balance = opening.get()
-
-                else:
-                    customer_id = session["customer_id"]
-                    balance = "0"
+                customer_id = session["customer_id"]
 
                 account_id = self.db.add_account(
-                    customer_id,
-                    account_type.get(),
-                    balance
+                    customer_id
                 )
 
                 messagebox.showinfo(
-                    "Created",
-                    f"Account ID: {account_id}"
+                    "Account Created",
+                    (
+                        "Your bank account was created.\n"
+                        f"Account ID: {account_id}\n"
+                        "Opening balance: 0 TRY"
+                    )
                 )
 
                 self.show_accounts()
 
             self.run(action)
 
-        self.button(
-            form,
+        create_button = self.button(
+            page,
             "Create Account",
-            create_account,
-            150
-        ).pack(
-            side="left",
-            padx=8
+            create_account
+        )
+        create_button.pack(
+            pady=(5, 12)
         )
 
-        if is_admin:
-            cols = (
-                "id",
-                "number",
-                "customer",
-                "type",
-                "balance",
-                "currency",
-                "active"
-            )
-
-            heads = (
-                "ID",
-                "Account Number",
-                "Customer",
-                "Type",
-                "Balance",
-                "Currency",
-                "Active"
-            )
-
-        else:
-            cols = (
-                "id",
-                "number",
-                "type",
-                "balance",
-                "currency",
-                "active"
-            )
-
-            heads = (
-                "ID",
-                "Account Number",
-                "Type",
-                "Balance",
-                "Currency",
-                "Active"
+        if active_count >= 3:
+            create_button.configure(
+                state="disabled"
             )
 
         tree = self.table(
             page,
-            cols,
-            heads
+            (
+                "id",
+                "number",
+                "balance",
+                "currency",
+                "status"
+            ),
+            (
+                "Account ID",
+                "Account Number",
+                "Balance",
+                "Currency",
+                "Status"
+            )
         )
 
-        self.refresh_table(
-            tree,
-            self.db.accounts
-        )
+        # Customer row format:
+        # 0 AccountID
+        # 1 AccountNumber
+        # 2 AccountType
+        # 3 Balance
+        # 4 Currency
+        # 5 IsActive
+
+        for row in rows:
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    row[0],
+                    str(row[1]).strip(),
+                    f"{row[3]:.2f}",
+                    str(row[4]).strip(),
+                    (
+                        "Active"
+                        if bool(row[5])
+                        else "Inactive"
+                    )
+                )
+            )
 
         self.button(
             page,
-            "Refresh",
-            lambda: self.refresh_table(
-                tree,
-                self.db.accounts
+            "Refresh Accounts",
+            lambda: self.run(
+                self.show_accounts
             )
-        ).pack(pady=8)
+        ).pack(
+            pady=12
+        )
 
     # ============================================================
     # TRANSACTIONS SCREEN
@@ -755,108 +908,327 @@ class App(ctk.CTk):
 
     def show_transactions(self):
         session = self.db.require_login()
-
         is_admin = session["role"] == "Admin"
 
         page = self.page(
-            "Transactions"
-            if is_admin
+            "Transactions" if is_admin
             else "My Transactions"
         )
 
+        account_rows = self.db.accounts()
+        account_map = {}
+
+        for row in account_rows:
+            active = bool(
+                row[6] if is_admin else row[5]
+            )
+
+            if not active:
+                continue
+
+            account_id = int(row[0])
+            account_number = str(row[1]).strip()
+            balance = row[4] if is_admin else row[3]
+
+            label = (
+                f"{account_number} | "
+                f"{balance} TRY"
+            )
+
+            account_map[label] = {
+                "id": account_id,
+                "number": account_number
+            }
+
+        account_labels = list(account_map)
+
         form = ctk.CTkFrame(
             page,
-            fg_color=CARD
+            fg_color=CARD,
+            corner_radius=12
         )
-
         form.pack(
             fill="x",
             padx=18,
             pady=8
         )
 
-        kinds = (
-            [
-                "Deposit",
-                "Withdrawal",
-                "Transfer"
-            ]
-            if is_admin
-            else [
-                "Withdrawal",
-                "Transfer"
-            ]
+        # Transaction type
+        ctk.CTkLabel(
+            form,
+            text="Transaction Type",
+            text_color=WHITE
+        ).grid(
+            row=0, column=0,
+            padx=10, pady=(12, 5),
+            sticky="w"
         )
 
         kind = ctk.CTkComboBox(
             form,
-            values=kinds,
-            width=140,
+            values=[
+                "Deposit",
+                "Withdrawal",
+                "Transfer"
+            ],
+            width=165,
             state="readonly"
         )
-
-        kind.pack(
-            side="left",
-            padx=5,
-            pady=14
+        kind.grid(
+            row=1, column=0,
+            padx=10, pady=5,
+            sticky="w"
         )
 
-        source = ctk.CTkEntry(
+        # Source account
+        ctk.CTkLabel(
             form,
-            placeholder_text="Source Account ID",
-            width=145
+            text="From / My Account",
+            text_color=WHITE
+        ).grid(
+            row=0, column=1,
+            padx=10, pady=(12, 5),
+            sticky="w"
         )
 
-        source.pack(
-            side="left",
-            padx=5
-        )
-
-        destination = ctk.CTkEntry(
+        source = ctk.CTkComboBox(
             form,
-            placeholder_text="Destination Account ID",
-            width=175
+            values=account_labels or [
+                "No active accounts"
+            ],
+            width=290,
+            state="readonly"
+        )
+        source.grid(
+            row=1, column=1,
+            padx=10, pady=5,
+            sticky="w"
         )
 
-        destination.pack(
-            side="left",
-            padx=5
+        # Transfer destination mode
+        transfer_mode_label = ctk.CTkLabel(
+            form,
+            text="Transfer To",
+            text_color=WHITE
+        )
+        transfer_mode_label.grid(
+            row=2, column=0,
+            padx=10, pady=(12, 5),
+            sticky="w"
+        )
+
+        transfer_mode = ctk.CTkComboBox(
+            form,
+            values=[
+                "My Own Accounts",
+                "Another Customer"
+            ],
+            width=180,
+            state="readonly"
+        )
+        transfer_mode.grid(
+            row=3, column=0,
+            padx=10, pady=5,
+            sticky="w"
+        )
+
+        # Own-account destination
+        own_destination_label = ctk.CTkLabel(
+            form,
+            text="To My Account",
+            text_color=WHITE
+        )
+        own_destination_label.grid(
+            row=2, column=1,
+            padx=10, pady=(12, 5),
+            sticky="w"
+        )
+
+        own_destination = ctk.CTkComboBox(
+            form,
+            values=account_labels or [
+                "No active accounts"
+            ],
+            width=290,
+            state="readonly"
+        )
+        own_destination.grid(
+            row=3, column=1,
+            padx=10, pady=5,
+            sticky="w"
+        )
+
+        # External recipient
+        external_destination_label = ctk.CTkLabel(
+            form,
+            text="Recipient Account Number",
+            text_color=WHITE
+        )
+        external_destination_label.grid(
+            row=2, column=1,
+            padx=10, pady=(12, 5),
+            sticky="w"
+        )
+
+        external_destination = ctk.CTkEntry(
+            form,
+            placeholder_text="TR + 16 digits",
+            width=290
+        )
+        external_destination.grid(
+            row=3, column=1,
+            padx=10, pady=5,
+            sticky="w"
+        )
+
+        # Amount
+        ctk.CTkLabel(
+            form,
+            text="Amount (TRY)",
+            text_color=WHITE
+        ).grid(
+            row=0, column=2,
+            padx=10, pady=(12, 5),
+            sticky="w"
         )
 
         amount = ctk.CTkEntry(
             form,
             placeholder_text="Amount",
-            width=115
+            width=150
+        )
+        amount.grid(
+            row=1, column=2,
+            padx=10, pady=5,
+            sticky="w"
         )
 
-        amount.pack(
-            side="left",
-            padx=5
+        # Description
+        ctk.CTkLabel(
+            form,
+            text="Description",
+            text_color=WHITE
+        ).grid(
+            row=0, column=3,
+            padx=10, pady=(12, 5),
+            sticky="w"
         )
 
         description = ctk.CTkEntry(
             form,
-            placeholder_text="Description",
-            width=145
+            placeholder_text="Optional",
+            width=190
+        )
+        description.grid(
+            row=1, column=3,
+            padx=10, pady=5,
+            sticky="w"
         )
 
-        description.pack(
-            side="left",
-            padx=5
+        def update_destination_fields(*args):
+            selected_kind = kind.get()
+
+            transfer_mode_label.grid_remove()
+            transfer_mode.grid_remove()
+            own_destination_label.grid_remove()
+            own_destination.grid_remove()
+            external_destination_label.grid_remove()
+            external_destination.grid_remove()
+
+            if selected_kind != "Transfer":
+                return
+
+            transfer_mode_label.grid()
+            transfer_mode.grid()
+
+            if transfer_mode.get() == "My Own Accounts":
+                own_destination_label.grid()
+                own_destination.grid()
+            else:
+                external_destination_label.grid()
+                external_destination.grid()
+
+        kind.configure(
+            command=update_destination_fields
         )
+        transfer_mode.configure(
+            command=update_destination_fields
+        )
+
+        kind.set("Deposit")
+        transfer_mode.set("My Own Accounts")
+
+        if account_labels:
+            source.set(account_labels[0])
+            own_destination.set(account_labels[0])
+
+        update_destination_fields()
 
         def execute():
             def action():
+                selected_source = source.get()
+
+                if selected_source not in account_map:
+                    raise ValueError(
+                        "Please select an active source account."
+                    )
+
+                source_id = account_map[
+                    selected_source
+                ]["id"]
+
+                selected_kind = kind.get()
+                destination_number = ""
+
+                if selected_kind == "Transfer":
+                    if (
+                        transfer_mode.get()
+                        == "My Own Accounts"
+                    ):
+                        selected_destination = (
+                            own_destination.get()
+                        )
+
+                        if (
+                            selected_destination
+                            not in account_map
+                        ):
+                            raise ValueError(
+                                "Please select a destination account."
+                            )
+
+                        destination_number = account_map[
+                            selected_destination
+                        ]["number"]
+
+                    else:
+                        destination_number = (
+                            external_destination.get()
+                            .strip()
+                            .upper()
+                        )
+
+                    if (
+                        destination_number
+                        == account_map[
+                            selected_source
+                        ]["number"]
+                    ):
+                        raise ValueError(
+                            "Source and destination "
+                            "accounts must differ."
+                        )
+
                 tx_id = self.db.transact(
-                    kind.get(),
-                    source.get(),
-                    destination.get(),
+                    selected_kind,
+                    source_id,
+                    destination_number,
                     amount.get(),
                     description.get()
                 )
 
                 messagebox.showinfo(
-                    "Completed",
+                    "Transaction Completed",
                     f"Transaction ID: {tx_id}"
                 )
 
@@ -868,7 +1240,7 @@ class App(ctk.CTk):
             page,
             "Execute Transaction",
             execute
-        ).pack(pady=8)
+        ).pack(pady=10)
 
         tree = self.table(
             page,
@@ -885,8 +1257,8 @@ class App(ctk.CTk):
             (
                 "ID",
                 "Type",
-                "From",
-                "To",
+                "From Account",
+                "To Account",
                 "Amount",
                 "Description",
                 "Date",
@@ -902,9 +1274,8 @@ class App(ctk.CTk):
         self.button(
             page,
             "Refresh",
-            lambda: self.refresh_table(
-                tree,
-                self.db.transactions
+            lambda: self.run(
+                self.show_transactions
             )
         ).pack(pady=8)
 
