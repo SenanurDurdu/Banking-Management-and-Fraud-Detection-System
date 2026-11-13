@@ -1,3 +1,4 @@
+from decimal import Decimal
 
 from core import (
     ctk,
@@ -715,10 +716,7 @@ class App(ctk.CTk):
                     account_id = int(values[0])
                     account_number = values[1]
                     customer_name = values[2]
-                    balance = money(
-                        values[3],
-                        allow_zero=True
-                    )
+                    balance = Decimal(str(values[3]))
                     status = values[5]
 
                     if status != "Active":
