@@ -609,16 +609,32 @@ class App(ctk.CTk):
                 pady=(12, 5)
             )
 
-            search_entry = ctk.CTkEntry(
-                search_frame,
-                placeholder_text="Enter customer name...",
-                width=350
+            # Create a unique customer list from account rows.
+            customer_names = sorted(
+                {
+                    str(row[2]).strip()
+                    for row in rows
+                }
             )
-            search_entry.pack(
+
+            customer_options = [
+                                   "All Customers"
+                               ] + customer_names
+
+            customer_combo = ctk.CTkComboBox(
+                search_frame,
+                values=customer_options,
+                width=350,
+                state="readonly"
+            )
+
+            customer_combo.pack(
                 anchor="w",
                 padx=12,
                 pady=(0, 12)
             )
+
+            customer_combo.set("All Customers")
 
             tree = self.table(
                 page,
@@ -641,32 +657,17 @@ class App(ctk.CTk):
             )
 
             def refresh_accounts(*args):
-                search_text = (
-                    search_entry.get()
-                    .strip()
-                    .casefold()
-                )
+                selected_customer = customer_combo.get()
 
-                # Remove existing rows.
                 for item in tree.get_children():
                     tree.delete(item)
 
-                # Admin row format:
-                # 0 AccountID
-                # 1 AccountNumber
-                # 2 CustomerName
-                # 3 AccountType
-                # 4 Balance
-                # 5 Currency
-                # 6 IsActive
-
                 for row in rows:
-                    customer_name = str(row[2])
+                    customer_name = str(row[2]).strip()
 
                     if (
-                        search_text
-                        and search_text
-                        not in customer_name.casefold()
+                            selected_customer != "All Customers"
+                            and customer_name != selected_customer
                     ):
                         continue
 
@@ -690,9 +691,8 @@ class App(ctk.CTk):
                     )
 
             # Search while typing.
-            search_entry.bind(
-                "<KeyRelease>",
-                refresh_accounts
+            customer_combo.configure(
+                command=refresh_accounts
             )
 
             refresh_accounts()

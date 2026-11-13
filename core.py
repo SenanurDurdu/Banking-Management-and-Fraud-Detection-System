@@ -25,7 +25,7 @@ DB_NAME = os.getenv("DB_NAME", "BankingFraudDB")
 DB_DRIVER = os.getenv("DB_DRIVER", "ODBC Driver 18 for SQL Server")
 DB_TRUSTED = os.getenv("DB_TRUSTED", "no").lower()
 DB_USERNAME = os.getenv("DB_USERNAME", "sa")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "Sd-135798834")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "SİZ KENDİ ŞİFRENİZİ GİRİN")
 
 ADMIN_EMAIL = "admin@gmail.com"
 ADMIN_PASSWORD = "Admin_password"
