@@ -33,17 +33,24 @@ class FraudMixin:
             return con.cursor().execute(
                 """
                 SELECT
-                    a.AlertID,
-                    a.TransactionID,
-                    r.RuleName,
-                    a.AlertDescription,
-                    a.RiskLevel,
-                    a.ReviewStatus,
-                    a.CreatedAt
-                FROM FraudAlerts a
-                JOIN FraudRules r
-                    ON r.RuleID = a.RuleID
-                ORDER BY a.AlertID DESC
+                    AlertID,
+                    TransactionID,
+                    RuleName,
+                    TransactionType,
+                    SenderCustomerID,
+                    SenderCustomer,
+                    SenderAccountNumber,
+                    ReceiverCustomerID,
+                    ReceiverCustomer,
+                    ReceiverAccountNumber,
+                    Amount,
+                    AlertDescription,
+                    RiskLevel,
+                    ReviewStatus,
+                    CreatedAt,
+                    ReviewedAt
+                FROM dbo.vw_FraudAlertDetails
+                ORDER BY AlertID DESC
                 """
             ).fetchall()
 
@@ -180,7 +187,8 @@ class FraudMixin:
                     if exists:
                         continue
 
-                    cur.execute(
+                    # Yeni fraud alarmını oluştur ve AlertID değerini al.
+                    new_alert_id = cur.execute(
                         """
                         INSERT INTO FraudAlerts
                             (
@@ -189,12 +197,27 @@ class FraudMixin:
                                 AlertDescription,
                                 RiskLevel
                             )
+                        OUTPUT INSERTED.AlertID
                         VALUES (?, ?, ?, ?)
                         """,
                         tx.TransactionID,
                         rule.RuleID,
                         description,
                         risk
+                    ).fetchone()[0]
+
+                    # Oluşturulan alarm için ayrı AuditLogs kaydı.
+                    audit(
+                        cur,
+                        "FRAUD_ALERT",
+                        "FraudAlert",
+                        new_alert_id,
+                        (
+                            f"Alert created for TransactionID "
+                            f"{tx.TransactionID}, "
+                            f"Rule: {rule.RuleName}, "
+                            f"Risk: {risk}"
+                        )
                     )
 
                     new_alerts += 1
@@ -217,15 +240,30 @@ class FraudMixin:
         finally:
             con.close()
 
+
     def review(self, alert_id, status):
         self.require_admin()
 
-        if status not in (
+        allowed_statuses = (
             "Reviewed",
-            "FalsePositive"
-        ):
+            "FalsePositive",
+            "ConfirmedFraud"
+        )
+
+        if status not in allowed_statuses:
             raise ValueError(
                 "Invalid review status."
+            )
+
+        try:
+            alert_id = int(alert_id)
+
+            if alert_id <= 0:
+                raise ValueError()
+
+        except (ValueError, TypeError):
+            raise ValueError(
+                "Invalid Alert ID."
             )
 
         con = connect()
@@ -236,7 +274,8 @@ class FraudMixin:
             cur.execute(
                 """
                 UPDATE FraudAlerts
-                SET ReviewStatus = ?,
+                SET
+                    ReviewStatus = ?,
                     ReviewedAt = SYSDATETIME()
                 WHERE AlertID = ?
                   AND ReviewStatus = 'Pending'
@@ -255,10 +294,11 @@ class FraudMixin:
                 "REVIEW",
                 "FraudAlert",
                 alert_id,
-                status
+                f"Alert marked as {status}"
             )
 
             con.commit()
+            return True
 
         except Exception:
             con.rollback()

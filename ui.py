@@ -1281,121 +1281,267 @@ class App(ctk.CTk):
     # FRAUD DETECTION SCREEN
     # ============================================================
 
+
     def show_fraud(self):
         self.db.require_admin()
 
-        page = self.page(
-            "Fraud Detection & Alerts"
-        )
+        page = self.page("Fraud Detection & Alerts")
+        rows = self.db.alerts()
 
-        controls = ctk.CTkFrame(
+        # Top action panel
+        actions = ctk.CTkFrame(
             page,
-            fg_color=CARD
+            fg_color=CARD,
+            corner_radius=10
         )
-
-        controls.pack(
+        actions.pack(
             fill="x",
             padx=18,
-            pady=8
+            pady=(12, 12)
         )
 
+        # Fraud detection
         def scan():
-            count = self.run(
-                self.db.scan_fraud
-            )
-
-            if count is not None:
+            def action():
+                count = self.db.scan_fraud()
                 messagebox.showinfo(
-                    "Fraud Scan",
-                    f"{count} new alert(s) created."
+                    "Fraud Detection",
+                    f"{count} new fraud alerts created."
                 )
-
                 self.show_fraud()
 
+            self.run(action)
+
         self.button(
-            controls,
+            actions,
             "Run Fraud Detection",
-            scan,
-            190
-        ).pack(
-            side="left",
-            padx=8,
-            pady=12
+            scan
+        ).pack(side="left", padx=10, pady=12)
+
+        # Alert table
+        columns = (
+            "alert",
+            "transaction",
+            "rule",
+            "type",
+            "sender",
+            "sender_account",
+            "receiver",
+            "receiver_account",
+            "amount",
+            "risk",
+            "status",
+            "created"
         )
 
-        alert_id = ctk.CTkEntry(
-            controls,
-            placeholder_text="Alert ID",
-            width=110
+        headings = (
+            "Alert ID",
+            "Transaction ID",
+            "Fraud Rule",
+            "Type",
+            "Sender Customer",
+            "Sender Account",
+            "Receiver Customer",
+            "Receiver Account",
+            "Amount (TRY)",
+            "Risk",
+            "Status",
+            "Created"
         )
 
-        alert_id.pack(
-            side="left",
-            padx=8
+        tree = self.table(
+            page,
+            columns,
+            headings
         )
 
-        def review(status):
+        # Store full alert details for selection
+        alert_details = {}
+
+        for row in rows:
+            # Expected order from fraud.py alerts():
+            # 0  AlertID
+            # 1  TransactionID
+            # 2  RuleName
+            # 3  TransactionType
+            # 4  SenderCustomerID
+            # 5  SenderCustomer
+            # 6  SenderAccountNumber
+            # 7  ReceiverCustomerID
+            # 8  ReceiverCustomer
+            # 9  ReceiverAccountNumber
+            # 10 Amount
+            # 11 AlertDescription
+            # 12 RiskLevel
+            # 13 ReviewStatus
+            # 14 CreatedAt
+            # 15 ReviewedAt
+
+            alert_id = int(row[0])
+            alert_details[alert_id] = row
+
+            sender = (
+                str(row[5])
+                if row[5] is not None
+                else "-"
+            )
+
+            receiver = (
+                str(row[8])
+                if row[8] is not None
+                else "-"
+            )
+
+            sender_account = (
+                str(row[6]).strip()
+                if row[6] is not None
+                else "-"
+            )
+
+            receiver_account = (
+                str(row[9]).strip()
+                if row[9] is not None
+                else "-"
+            )
+
+            tree.insert(
+                "",
+                "end",
+                iid=str(alert_id),
+                values=(
+                    alert_id,
+                    row[1],
+                    row[2],
+                    row[3],
+                    sender,
+                    sender_account,
+                    receiver,
+                    receiver_account,
+                    f"{row[10]:.2f}",
+                    row[12],
+                    row[13],
+                    str(row[14])[:19]
+                )
+            )
+
+        # Selected alert information
+        info = ctk.CTkFrame(
+            page,
+            fg_color=CARD,
+            corner_radius=10
+        )
+        info.pack(
+            fill="x",
+            padx=18,
+            pady=(10, 5)
+        )
+
+        detail_label = ctk.CTkLabel(
+            info,
+            text="Select an alert to view details.",
+            text_color=WHITE,
+            justify="left",
+            anchor="w"
+        )
+        detail_label.pack(
+            fill="x",
+            padx=12,
+            pady=10
+        )
+
+        def get_selected_alert():
+            selected = tree.selection()
+
+            if not selected:
+                raise ValueError(
+                    "Please select an alert from the table."
+                )
+
+            alert_id = int(selected[0])
+            return alert_id, alert_details[alert_id]
+
+        def show_details(event=None):
+            selected = tree.selection()
+
+            if not selected:
+                return
+
+            alert_id = int(selected[0])
+            row = alert_details[alert_id]
+
+            detail_label.configure(
+                text=(
+                    f"Alert ID: {row[0]}    "
+                    f"Transaction ID: {row[1]}\n"
+                    f"Rule: {row[2]}\n"
+                    f"Sender: {row[5] or '-'}    "
+                    f"Receiver: {row[8] or '-'}\n"
+                    f"Amount: {row[10]:.2f} TRY    "
+                    f"Risk: {row[12]}\n"
+                    f"Status: {row[13]}\n"
+                    f"Reason: {row[11]}"
+                )
+            )
+
+        tree.bind(
+            "<<TreeviewSelect>>",
+            show_details
+        )
+
+        def change_status(status):
             def action():
-                if not alert_id.get().isdigit():
+                alert_id, row = get_selected_alert()
+
+                if row[13] != "Pending":
                     raise ValueError(
-                        "Enter a valid Alert ID."
+                        "This alert has already been reviewed."
                     )
 
-                self.db.review(
-                    int(alert_id.get()),
-                    status
+                if not messagebox.askyesno(
+                    "Confirm Decision",
+                    (
+                        f"Alert ID: {alert_id}\n"
+                        f"New Status: {status}\n\n"
+                        "Do you want to continue?"
+                    )
+                ):
+                    return
+
+                self.db.review(alert_id, status)
+
+                messagebox.showinfo(
+                    "Success",
+                    f"Alert marked as {status}."
                 )
 
                 self.show_fraud()
 
             self.run(action)
 
+        # Review buttons
         self.button(
-            controls,
+            actions,
             "Mark Reviewed",
-            lambda: review("Reviewed"),
-            140
-        ).pack(
-            side="left",
-            padx=5
-        )
+            lambda: change_status("Reviewed")
+        ).pack(side="left", padx=8, pady=12)
 
         self.button(
-            controls,
+            actions,
             "False Positive",
-            lambda: review("FalsePositive"),
-            140
-        ).pack(
-            side="left",
-            padx=5
-        )
+            lambda: change_status("FalsePositive")
+        ).pack(side="left", padx=8, pady=12)
 
-        tree = self.table(
-            page,
-            (
-                "id",
-                "tx",
-                "rule",
-                "description",
-                "risk",
-                "status",
-                "created"
-            ),
-            (
-                "Alert ID",
-                "Transaction",
-                "Rule",
-                "Description",
-                "Risk",
-                "Status",
-                "Created"
-            )
-        )
+        self.button(
+            actions,
+            "Confirm Fraud",
+            lambda: change_status("ConfirmedFraud")
+        ).pack(side="left", padx=8, pady=12)
 
-        self.refresh_table(
-            tree,
-            self.db.alerts
-        )
+        self.button(
+            actions,
+            "Refresh",
+            lambda: self.run(self.show_fraud)
+        ).pack(side="left", padx=8, pady=12)
 
     # ============================================================
     # FRAUD RULES SCREEN
