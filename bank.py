@@ -4,6 +4,7 @@ from accounts import AccountsMixin
 from transactions import TransactionsMixin
 from fraud import FraudMixin
 from dashboard import DashboardMixin
+from notifications import NotificationsMixin
 
 
 class Bank(
@@ -12,6 +13,7 @@ class Bank(
     AccountsMixin,
     TransactionsMixin,
     FraudMixin,
-    DashboardMixin
+    DashboardMixin,
+    NotificationsMixin
 ):
     pass

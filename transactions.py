@@ -4,6 +4,10 @@ from core import *
 
 class TransactionsMixin:
 
+    # ========================================================
+    # EXECUTE BANK TRANSACTION
+    # ========================================================
+
     def transact(
         self,
         kind,
@@ -14,6 +18,10 @@ class TransactionsMixin:
     ):
         session = self.require_login()
 
+        # ----------------------------------------------------
+        # VALIDATE TRANSACTION TYPE
+        # ----------------------------------------------------
+
         if kind not in (
             "Deposit",
             "Withdrawal",
@@ -23,19 +31,34 @@ class TransactionsMixin:
                 "Invalid transaction type."
             )
 
+        # ----------------------------------------------------
+        # VALIDATE SOURCE ACCOUNT
+        # ----------------------------------------------------
+
         try:
             source = int(source)
+
             if source <= 0:
                 raise ValueError()
+
         except (ValueError, TypeError):
             raise ValueError(
                 "Valid source account is required."
             )
 
+        # ----------------------------------------------------
+        # VALIDATE AMOUNT
+        # ----------------------------------------------------
+
         amount = money(value)
 
+        # ----------------------------------------------------
+        # VALIDATE DESCRIPTION
+        # ----------------------------------------------------
+
         description = (
-            "" if description is None
+            ""
+            if description is None
             else str(description).strip()
         )
 
@@ -44,9 +67,14 @@ class TransactionsMixin:
                 "Description cannot exceed 250 characters."
             )
 
+        # ----------------------------------------------------
+        # VALIDATE DESTINATION ACCOUNT
+        # ----------------------------------------------------
+
         destination_number = None
 
         if kind == "Transfer":
+
             destination_number = str(
                 destination or ""
             ).strip().upper()
@@ -54,6 +82,7 @@ class TransactionsMixin:
             if (
                 len(destination_number) != 18
                 or not destination_number.startswith("TR")
+                or not destination_number[2:].isascii()
                 or not destination_number[2:].isdigit()
             ):
                 raise ValueError(
@@ -61,191 +90,89 @@ class TransactionsMixin:
                     "recipient account number."
                 )
 
+        # ----------------------------------------------------
+        # DEPOSIT PERMISSION
+        # ----------------------------------------------------
+
+        # Customers can deposit into their own accounts.
+        # SQL Server checks account ownership and status.
+        # No Admin-only restriction is applied here.
+
+        # ----------------------------------------------------
+        # CALL SQL SERVER STORED PROCEDURE
+        # ----------------------------------------------------
+
         con = connect()
 
         try:
             cur = con.cursor()
 
-            destination_id = None
-
-            if kind == "Transfer":
-                # Resolve the recipient's public account
-                # number to the internal AccountID.
-                #
-                # The lock is retained until commit,
-                # so the account cannot be changed
-                # concurrently during this transaction.
-                recipient = cur.execute(
-                    """
-                    SELECT AccountID
-                    FROM Accounts WITH (UPDLOCK, HOLDLOCK)
-                    WHERE AccountNumber = ?
-                    """,
-                    destination_number
-                ).fetchone()
-
-                if not recipient:
-                    raise ValueError(
-                        "Recipient account not found."
-                    )
-
-                destination_id = int(
-                    recipient.AccountID
-                )
-
-                if source == destination_id:
-                    raise ValueError(
-                        "You cannot transfer money "
-                        "to the same account."
-                    )
-
-            # Acquire account locks.
-            # Accounts are locked for the transaction.
-            locked = {}
-
-            ids = sorted(
-                {source, destination_id} - {None}
-            )
-
-            for account_id in ids:
-                row = cur.execute(
-                    """
-                    SELECT
-                        AccountID,
-                        CustomerID,
-                        Balance,
-                        Currency,
-                        IsActive
-                    FROM Accounts WITH (UPDLOCK, HOLDLOCK)
-                    WHERE AccountID = ?
-                    """,
-                    account_id
-                ).fetchone()
-
-                if not row or not row.IsActive:
-                    raise ValueError(
-                        f"Account {account_id} "
-                        "is unavailable."
-                    )
-
-                locked[account_id] = row
-
-            src = locked[source]
-
-            # Customers may only initiate transactions
-            # from their own bank accounts.
-            if session["role"] == "Customer":
-                if (
-                    int(src.CustomerID)
-                    != int(session["customer_id"])
-                ):
-                    raise PermissionError(
-                        "You can only use your own account."
-                    )
-
             if kind == "Deposit":
+
                 cur.execute(
                     """
-                    UPDATE Accounts
-                    SET Balance = Balance + ?
-                    WHERE AccountID = ?
+                    EXEC dbo.sp_Deposit
+                        @UserID = ?,
+                        @SourceAccountID = ?,
+                        @Amount = ?,
+                        @Description = ?
                     """,
+                    session["user_id"],
+                    source,
                     amount,
-                    source
+                    description
                 )
-
-                from_id = None
-                to_id = source
 
             elif kind == "Withdrawal":
-                if src.Balance < amount:
-                    raise ValueError(
-                        "Insufficient balance."
-                    )
 
                 cur.execute(
                     """
-                    UPDATE Accounts
-                    SET Balance = Balance - ?
-                    WHERE AccountID = ?
+                    EXEC dbo.sp_Withdraw
+                        @UserID = ?,
+                        @SourceAccountID = ?,
+                        @Amount = ?,
+                        @Description = ?
                     """,
+                    session["user_id"],
+                    source,
                     amount,
-                    source
+                    description
                 )
-
-                from_id = source
-                to_id = None
 
             else:
-                dst = locked[destination_id]
-
-                if src.Currency != dst.Currency:
-                    raise ValueError(
-                        "Transfers between different "
-                        "currencies are not supported."
-                    )
-
-                if src.Balance < amount:
-                    raise ValueError(
-                        "Insufficient balance."
-                    )
 
                 cur.execute(
                     """
-                    UPDATE Accounts
-                    SET Balance = Balance - ?
-                    WHERE AccountID = ?
+                    EXEC dbo.sp_Transfer
+                        @UserID = ?,
+                        @SourceAccountID = ?,
+                        @DestinationAccountNumber = ?,
+                        @Amount = ?,
+                        @Description = ?
                     """,
+                    session["user_id"],
+                    source,
+                    destination_number,
                     amount,
-                    source
+                    description
                 )
 
-                cur.execute(
-                    """
-                    UPDATE Accounts
-                    SET Balance = Balance + ?
-                    WHERE AccountID = ?
-                    """,
-                    amount,
-                    destination_id
+            # ------------------------------------------------
+            # READ TRANSACTION ID
+            # ------------------------------------------------
+
+            result = cur.fetchone()
+
+            if result is None:
+                raise RuntimeError(
+                    "Stored procedure did not return "
+                    "a TransactionID."
                 )
 
-                from_id = source
-                to_id = destination_id
-
-            cur.execute(
-                """
-                INSERT INTO Transactions
-                (
-                    FromAccountID,
-                    ToAccountID,
-                    TransactionType,
-                    Amount,
-                    Description
-                )
-                OUTPUT INSERTED.TransactionID
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                from_id,
-                to_id,
-                kind,
-                amount,
-                description
-            )
-
-            transaction_id = int(
-                cur.fetchone()[0]
-            )
-
-            audit(
-                cur,
-                kind.upper(),
-                "Transaction",
-                transaction_id,
-                f"{kind}: {amount}"
-            )
+            transaction_id = int(result[0])
 
             con.commit()
+
             return transaction_id
 
         except Exception:
@@ -254,6 +181,11 @@ class TransactionsMixin:
 
         finally:
             con.close()
+
+    # ========================================================
+    # TRANSACTION HISTORY
+    # ========================================================
+
 
     def transactions(self):
         session = self.require_login()
@@ -271,12 +203,67 @@ class TransactionsMixin:
                     t.Amount,
                     t.Description,
                     t.TransactionDate,
-                    t.Status
-                FROM Transactions t
-                LEFT JOIN Accounts f
+                    t.Status,
+
+                    CONCAT(
+                        fc.FirstName, ' ', fc.LastName
+                    ) AS SenderCustomer,
+
+                    CONCAT(
+                        dc.FirstName, ' ', dc.LastName
+                    ) AS ReceiverCustomer,
+
+                    CASE
+                        WHEN NOT EXISTS (
+                            SELECT 1
+                            FROM dbo.FraudAlerts fa
+                            WHERE fa.TransactionID = t.TransactionID
+                        )
+                        THEN 'Not Flagged'
+
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM dbo.FraudAlerts fa
+                            WHERE fa.TransactionID = t.TransactionID
+                              AND fa.ReviewStatus = 'ConfirmedFraud'
+                        )
+                        THEN 'Confirmed Fraud'
+
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM dbo.FraudAlerts fa
+                            WHERE fa.TransactionID = t.TransactionID
+                              AND (
+                                  fa.ReviewStatus IS NULL
+                                  OR fa.ReviewStatus = 'Pending'
+                              )
+                        )
+                        THEN 'Pending Review'
+
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM dbo.FraudAlerts fa
+                            WHERE fa.TransactionID = t.TransactionID
+                              AND fa.ReviewStatus = 'Reviewed'
+                        )
+                        THEN 'Reviewed'
+
+                        ELSE 'False Positive'
+                    END AS FraudStatus
+
+                FROM dbo.Transactions AS t
+
+                LEFT JOIN dbo.Accounts AS f
                     ON f.AccountID = t.FromAccountID
-                LEFT JOIN Accounts d
+
+                LEFT JOIN dbo.Customers AS fc
+                    ON fc.CustomerID = f.CustomerID
+
+                LEFT JOIN dbo.Accounts AS d
                     ON d.AccountID = t.ToAccountID
+
+                LEFT JOIN dbo.Customers AS dc
+                    ON dc.CustomerID = d.CustomerID
             """
 
             if session["role"] == "Admin":

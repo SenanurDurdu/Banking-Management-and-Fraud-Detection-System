@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+
 from core import (
     ctk,
     ttk,
@@ -24,7 +25,7 @@ class App(ctk.CTk):
         self.db = Bank()
 
         self.title("Banking Management & Fraud Detection System")
-        self.geometry("1350x850")
+        self.geometry("1350x950")
         self.minsize(1050, 700)
         self.configure(fg_color=BG)
 
@@ -242,11 +243,12 @@ class App(ctk.CTk):
     # REGISTRATION SCREEN
     # ============================================================
 
+
     def show_register(self):
         card = self.auth_card(
-            "Create Account",
+            "Registration",
             "All fields are required",
-            750
+            820
         )
 
         first = self.entry(
@@ -274,9 +276,15 @@ class App(ctk.CTk):
             "Gmail address (@gmail.com)"
         )
 
-        address = self.entry(
+        # City and district are entered manually.
+        city = self.entry(
             card,
-            "Address"
+            "City (İl)"
+        )
+
+        district = self.entry(
+            card,
+            "District (İlçe)"
         )
 
         password = self.entry(
@@ -298,19 +306,31 @@ class App(ctk.CTk):
                         "Passwords do not match."
                     )
 
-                cid = self.db.register(
+                city_value = city.get().strip()
+                district_value = district.get().strip()
+
+                if not city_value or not district_value:
+                    raise ValueError(
+                        "City and District are required."
+                    )
+
+                address_value = (
+                    f"{city_value} / {district_value}"
+                )
+
+                self.db.register(
                     first.get(),
                     last.get(),
                     national_id.get(),
                     phone.get(),
                     email.get(),
-                    address.get(),
+                    address_value,
                     password.get()
                 )
 
                 messagebox.showinfo(
                     "Registration Successful",
-                    f"Customer ID: {cid}"
+                    "Registration Successful!"
                 )
 
                 self.show_login()
@@ -331,6 +351,7 @@ class App(ctk.CTk):
             fg_color="transparent",
             text_color="#93C5FD"
         ).pack(pady=3)
+
 
     # ============================================================
     # MAIN PANEL AND SIDEBAR
@@ -398,13 +419,16 @@ class App(ctk.CTk):
                 ("Transactions", self.show_transactions),
                 ("Fraud Alerts", self.show_fraud),
                 ("Fraud Rules", self.show_rules),
+                ("Send Announcement", self.show_send_announcement),
                 ("Audit Logs", self.show_logs)
             ]
         else:
             navigation = [
                 ("Dashboard", self.show_dashboard),
                 ("My Accounts", self.show_accounts),
-                ("My Transactions", self.show_transactions)
+                ("My Transactions", self.show_transactions),
+                ("My Fraud Reviews", self.show_customer_fraud_reviews),
+                ("Notifications", self.show_notifications)
             ]
 
         for title, fn in navigation:
@@ -583,11 +607,11 @@ class App(ctk.CTk):
 
         rows = self.db.accounts()
 
-        # ==========================================
-        # ADMIN: SEARCH + DELETE ZERO-BALANCE ACCOUNT
-        # ==========================================
-        if is_admin:
+        # ========================================================
+        # ADMIN: VIEW AND SEARCH ACCOUNTS
+        # ========================================================
 
+        if is_admin:
             search_frame = ctk.CTkFrame(
                 page,
                 fg_color=CARD,
@@ -609,7 +633,6 @@ class App(ctk.CTk):
                 pady=(12, 5)
             )
 
-            # Create a unique customer list from account rows.
             customer_names = sorted(
                 {
                     str(row[2]).strip()
@@ -617,9 +640,9 @@ class App(ctk.CTk):
                 }
             )
 
-            customer_options = [
-                                   "All Customers"
-                               ] + customer_names
+            customer_options = (
+                ["All Customers"] + customer_names
+            )
 
             customer_combo = ctk.CTkComboBox(
                 search_frame,
@@ -627,13 +650,11 @@ class App(ctk.CTk):
                 width=350,
                 state="readonly"
             )
-
             customer_combo.pack(
                 anchor="w",
                 padx=12,
                 pady=(0, 12)
             )
-
             customer_combo.set("All Customers")
 
             tree = self.table(
@@ -659,15 +680,14 @@ class App(ctk.CTk):
             def refresh_accounts(*args):
                 selected_customer = customer_combo.get()
 
-                for item in tree.get_children():
-                    tree.delete(item)
+                tree.delete(*tree.get_children())
 
                 for row in rows:
                     customer_name = str(row[2]).strip()
 
                     if (
-                            selected_customer != "All Customers"
-                            and customer_name != selected_customer
+                        selected_customer != "All Customers"
+                        and customer_name != selected_customer
                     ):
                         continue
 
@@ -690,96 +710,17 @@ class App(ctk.CTk):
                         )
                     )
 
-            # Search while typing.
             customer_combo.configure(
                 command=refresh_accounts
             )
 
             refresh_accounts()
 
-            def delete_selected():
-                def action():
-                    selected = tree.selection()
-
-                    if not selected:
-                        messagebox.showwarning(
-                            "Select Account",
-                            "Please select an account first."
-                        )
-                        return
-
-                    values = tree.item(
-                        selected[0],
-                        "values"
-                    )
-
-                    account_id = int(values[0])
-                    account_number = values[1]
-                    customer_name = values[2]
-                    balance = Decimal(str(values[3]))
-                    status = values[5]
-
-                    if status != "Active":
-                        raise ValueError(
-                            "This account is already inactive."
-                        )
-
-                    if balance != 0:
-                        raise ValueError(
-                            "Only accounts with 0 TRY balance "
-                            "can be deleted."
-                        )
-
-                    confirmed = messagebox.askyesno(
-                        "Confirm Account Deletion",
-                        (
-                            "Deactivate this bank account?\n\n"
-                            f"Customer: {customer_name}\n"
-                            f"Account: {account_number}\n"
-                            f"Balance: {balance:.2f} TRY\n\n"
-                            "Transaction history will be preserved."
-                        )
-                    )
-
-                    if not confirmed:
-                        return
-
-                    self.db.delete_account(
-                        account_id
-                    )
-
-                    messagebox.showinfo(
-                        "Success",
-                        "Account deactivated successfully."
-                    )
-
-                    self.show_accounts()
-
-                self.run(action)
-
-            self.button(
-                page,
-                "Delete Selected Account",
-                delete_selected
-            ).pack(
-                pady=(12, 5)
-            )
-
-            self.button(
-                page,
-                "Refresh Accounts",
-                lambda: self.run(
-                    self.show_accounts
-                )
-            ).pack(
-                pady=(0, 12)
-            )
-
             return
 
-        # ==========================================
-        # CUSTOMER: VIEW + CREATE OWN ACCOUNTS
-        # ==========================================
+        # ========================================================
+        # CUSTOMER: VIEW AND CREATE OWN ACCOUNTS
+        # ========================================================
 
         active_count = sum(
             1
@@ -847,6 +788,10 @@ class App(ctk.CTk):
                 state="disabled"
             )
 
+        # ========================================================
+        # CUSTOMER ACCOUNTS TABLE
+        # ========================================================
+
         tree = self.table(
             page,
             (
@@ -865,14 +810,6 @@ class App(ctk.CTk):
             )
         )
 
-        # Customer row format:
-        # 0 AccountID
-        # 1 AccountNumber
-        # 2 AccountType
-        # 3 Balance
-        # 4 Currency
-        # 5 IsActive
-
         for row in rows:
             tree.insert(
                 "",
@@ -890,15 +827,75 @@ class App(ctk.CTk):
                 )
             )
 
+        # ========================================================
+        # CUSTOMER: CLOSE SELECTED ZERO-BALANCE ACCOUNT
+        # ========================================================
+
+        def close_selected_account():
+            def action():
+                selected = tree.selection()
+
+                if not selected:
+                    messagebox.showwarning(
+                        "Select Account",
+                        "Please select an account first."
+                    )
+                    return
+
+                values = tree.item(
+                    selected[0],
+                    "values"
+                )
+
+                account_id = int(values[0])
+                account_number = values[1]
+                balance = Decimal(str(values[2]))
+                status = values[4]
+
+                if status != "Active":
+                    raise ValueError(
+                        "This account is already inactive."
+                    )
+
+                if balance != 0:
+                    raise ValueError(
+                        "Only accounts with 0 TRY balance "
+                        "can be closed."
+                    )
+
+                confirmed = messagebox.askyesno(
+                    "Confirm Account Closure",
+                    (
+                        "Close this bank account?\n\n"
+                        f"Account: {account_number}\n"
+                        f"Balance: {balance:.2f} TRY\n\n"
+                        "Your transaction history will be preserved."
+                    )
+                )
+
+                if not confirmed:
+                    return
+
+                self.db.delete_account(account_id)
+
+                messagebox.showinfo(
+                    "Success",
+                    "Your bank account has been closed successfully."
+                )
+
+                self.show_accounts()
+
+            self.run(action)
+
         self.button(
             page,
-            "Refresh Accounts",
-            lambda: self.run(
-                self.show_accounts
-            )
+            "Close Selected Account",
+            close_selected_account
         ).pack(
-            pady=12
+            pady=(12, 5)
         )
+
+
 
     # ============================================================
     # TRANSACTIONS SCREEN
@@ -1240,9 +1237,37 @@ class App(ctk.CTk):
             execute
         ).pack(pady=10)
 
-        tree = self.table(
-            page,
-            (
+        if is_admin:
+            columns = (
+                "id",
+                "type",
+                "sender_customer",
+                "receiver_customer",
+                "from",
+                "to",
+                "amount",
+                "description",
+                "date",
+                "status",
+                "fraud_status"
+            )
+
+            headings = (
+                "ID",
+                "Type",
+                "Sender Customer",
+                "Receiver Customer",
+                "From Account",
+                "To Account",
+                "Amount",
+                "Description",
+                "Date",
+                "Status",
+                "Fraud Status"
+            )
+
+        else:
+            columns = (
                 "id",
                 "type",
                 "from",
@@ -1250,9 +1275,11 @@ class App(ctk.CTk):
                 "amount",
                 "description",
                 "date",
-                "status"
-            ),
-            (
+                "status",
+                "fraud_status"
+            )
+
+            headings = (
                 "ID",
                 "Type",
                 "From Account",
@@ -1260,14 +1287,58 @@ class App(ctk.CTk):
                 "Amount",
                 "Description",
                 "Date",
-                "Status"
+                "Status",
+                "Fraud Status"
             )
+
+        tree = self.table(
+            page,
+            columns,
+            headings
         )
 
-        self.refresh_table(
-            tree,
-            self.db.transactions
-        )
+        def refresh_transactions():
+            rows = self.db.transactions()
+
+            tree.delete(*tree.get_children())
+
+            for row in rows:
+                fraud_status = row[10] or "Not Flagged"
+
+                if is_admin:
+                    values = (
+                        row[0],
+                        row[1],
+                        row[8] or "-",
+                        row[9] or "-",
+                        row[2] or "-",
+                        row[3] or "-",
+                        f"{row[4]:.2f}",
+                        row[5] or "-",
+                        str(row[6])[:19],
+                        row[7],
+                        fraud_status
+                    )
+                else:
+                    values = (
+                        row[0],
+                        row[1],
+                        row[2] or "-",
+                        row[3] or "-",
+                        f"{row[4]:.2f}",
+                        row[5] or "-",
+                        str(row[6])[:19],
+                        row[7],
+                        fraud_status
+                    )
+
+                tree.insert(
+                    "",
+                    "end",
+                    values=values
+                )
+
+        self.run(refresh_transactions)
 
         self.button(
             page,
@@ -1282,13 +1353,22 @@ class App(ctk.CTk):
     # ============================================================
 
 
+
+    # ============================================================
+    # FRAUD DETECTION SCREEN
+    # ============================================================
+
+
     def show_fraud(self):
         self.db.require_admin()
 
         page = self.page("Fraud Detection & Alerts")
         rows = self.db.alerts()
 
-        # Top action panel
+        # ========================================================
+        # ACTION PANEL
+        # ========================================================
+
         actions = ctk.CTkFrame(
             page,
             fg_color=CARD,
@@ -1297,17 +1377,18 @@ class App(ctk.CTk):
         actions.pack(
             fill="x",
             padx=18,
-            pady=(12, 12)
+            pady=(10, 8)
         )
 
-        # Fraud detection
         def scan():
             def action():
                 count = self.db.scan_fraud()
+
                 messagebox.showinfo(
                     "Fraud Detection",
                     f"{count} new fraud alerts created."
                 )
+
                 self.show_fraud()
 
             self.run(action)
@@ -1315,10 +1396,29 @@ class App(ctk.CTk):
         self.button(
             actions,
             "Run Fraud Detection",
-            scan
-        ).pack(side="left", padx=10, pady=12)
+            scan,
+            width=180
+        ).pack(
+            side="left",
+            padx=8,
+            pady=12
+        )
 
-        # Alert table
+        self.button(
+            actions,
+            "Refresh",
+            lambda: self.run(self.show_fraud),
+            width=110
+        ).pack(
+            side="left",
+            padx=8,
+            pady=12
+        )
+
+        # ========================================================
+        # FRAUD ALERTS TABLE
+        # ========================================================
+
         columns = (
             "alert",
             "transaction",
@@ -1329,9 +1429,11 @@ class App(ctk.CTk):
             "receiver",
             "receiver_account",
             "amount",
+            "transaction_description",
             "risk",
             "status",
-            "created"
+            "created",
+            "review_note"
         )
 
         headings = (
@@ -1344,9 +1446,11 @@ class App(ctk.CTk):
             "Receiver Customer",
             "Receiver Account",
             "Amount (TRY)",
+            "Transaction Description",
             "Risk",
             "Status",
-            "Created"
+            "Created",
+            "Admin Review Note"
         )
 
         tree = self.table(
@@ -1355,29 +1459,50 @@ class App(ctk.CTk):
             headings
         )
 
-        # Store full alert details for selection
+        tree.column(
+            "transaction_description",
+            width=230,
+            minwidth=150,
+            anchor="w"
+        )
+
+        tree.column(
+            "review_note",
+            width=280,
+            minwidth=150,
+            anchor="w"
+        )
+
+        # ========================================================
+        # LOAD FRAUD ALERTS
+        # ========================================================
+
+        # Expected row indexes from fraud.py:
+        #
+        # 0  AlertID
+        # 1  TransactionID
+        # 2  RuleName
+        # 3  TransactionType
+        # 4  SenderCustomerID
+        # 5  SenderCustomer
+        # 6  SenderAccountNumber
+        # 7  ReceiverCustomerID
+        # 8  ReceiverCustomer
+        # 9  ReceiverAccountNumber
+        # 10 Amount
+        # 11 AlertDescription
+        # 12 RiskLevel
+        # 13 ReviewStatus
+        # 14 CreatedAt
+        # 15 ReviewedAt
+        # 16 ReviewNote
+        # 17 TransactionDescription
+
         alert_details = {}
 
         for row in rows:
-            # Expected order from fraud.py alerts():
-            # 0  AlertID
-            # 1  TransactionID
-            # 2  RuleName
-            # 3  TransactionType
-            # 4  SenderCustomerID
-            # 5  SenderCustomer
-            # 6  SenderAccountNumber
-            # 7  ReceiverCustomerID
-            # 8  ReceiverCustomer
-            # 9  ReceiverAccountNumber
-            # 10 Amount
-            # 11 AlertDescription
-            # 12 RiskLevel
-            # 13 ReviewStatus
-            # 14 CreatedAt
-            # 15 ReviewedAt
-
             alert_id = int(row[0])
+
             alert_details[alert_id] = row
 
             sender = (
@@ -1404,6 +1529,18 @@ class App(ctk.CTk):
                 else "-"
             )
 
+            transaction_description = (
+                str(row[17])
+                if row[17] is not None and str(row[17]).strip()
+                else "-"
+            )
+
+            admin_review_note = (
+                str(row[16])
+                if row[16] is not None and str(row[16]).strip()
+                else "-"
+            )
+
             tree.insert(
                 "",
                 "end",
@@ -1418,13 +1555,18 @@ class App(ctk.CTk):
                     receiver,
                     receiver_account,
                     f"{row[10]:.2f}",
+                    transaction_description,
                     row[12],
                     row[13],
-                    str(row[14])[:19]
+                    str(row[14])[:19],
+                    admin_review_note
                 )
             )
 
-        # Selected alert information
+        # ========================================================
+        # SELECTED ALERT DETAILS
+        # ========================================================
+
         info = ctk.CTkFrame(
             page,
             fg_color=CARD,
@@ -1433,7 +1575,7 @@ class App(ctk.CTk):
         info.pack(
             fill="x",
             padx=18,
-            pady=(10, 5)
+            pady=(5, 5)
         )
 
         detail_label = ctk.CTkLabel(
@@ -1441,12 +1583,66 @@ class App(ctk.CTk):
             text="Select an alert to view details.",
             text_color=WHITE,
             justify="left",
-            anchor="w"
+            anchor="w",
+            wraplength=850
         )
         detail_label.pack(
             fill="x",
             padx=12,
             pady=10
+        )
+
+        # ========================================================
+        # ADMIN REVIEW NOTE
+        # ========================================================
+
+        review_frame = ctk.CTkFrame(
+            page,
+            fg_color=CARD,
+            corner_radius=10
+        )
+        review_frame.pack(
+            fill="x",
+            padx=18,
+            pady=(5, 5)
+        )
+
+        ctk.CTkLabel(
+            review_frame,
+            text="Admin Review Note (Optional, max 500 characters)",
+            text_color=WHITE,
+            font=("Arial", 14, "bold")
+        ).pack(
+            anchor="w",
+            padx=12,
+            pady=(10, 4)
+        )
+
+        review_note = ctk.CTkTextbox(
+            review_frame,
+            height=75,
+            fg_color=SIDEBAR,
+            text_color=WHITE,
+            corner_radius=8
+        )
+        review_note.pack(
+            fill="x",
+            padx=12,
+            pady=(0, 10)
+        )
+
+        # ========================================================
+        # REVIEW BUTTONS FRAME
+        # ========================================================
+
+        review_actions = ctk.CTkFrame(
+            page,
+            fg_color="transparent"
+        )
+        review_actions.pack(
+            fill="x",
+            padx=18,
+            pady=(5, 10)
         )
 
         def get_selected_alert():
@@ -1458,7 +1654,12 @@ class App(ctk.CTk):
                 )
 
             alert_id = int(selected[0])
+
             return alert_id, alert_details[alert_id]
+
+        # ========================================================
+        # SHOW SELECTED ALERT DETAILS
+        # ========================================================
 
         def show_details(event=None):
             selected = tree.selection()
@@ -1469,6 +1670,18 @@ class App(ctk.CTk):
             alert_id = int(selected[0])
             row = alert_details[alert_id]
 
+            transaction_description = (
+                str(row[17])
+                if row[17] is not None and str(row[17]).strip()
+                else "-"
+            )
+
+            saved_review_note = (
+                str(row[16])
+                if row[16] is not None
+                else ""
+            )
+
             detail_label.configure(
                 text=(
                     f"Alert ID: {row[0]}    "
@@ -1478,15 +1691,52 @@ class App(ctk.CTk):
                     f"Receiver: {row[8] or '-'}\n"
                     f"Amount: {row[10]:.2f} TRY    "
                     f"Risk: {row[12]}\n"
+                    f"Transaction Description: "
+                    f"{transaction_description}\n"
                     f"Status: {row[13]}\n"
                     f"Reason: {row[11]}"
                 )
             )
 
+            # Enable temporarily to update textbox content.
+            review_note.configure(state="normal")
+            review_note.delete("1.0", "end")
+
+            is_pending = row[13] == "Pending"
+
+            if not is_pending and saved_review_note:
+                review_note.insert(
+                    "1.0",
+                    saved_review_note
+                )
+
+            # Pending alerts can be reviewed.
+            # Already reviewed alerts are read-only.
+            review_note.configure(
+                state=(
+                    "normal"
+                    if is_pending
+                    else "disabled"
+                )
+            )
+
+            for button in decision_buttons:
+                button.configure(
+                    state=(
+                        "normal"
+                        if is_pending
+                        else "disabled"
+                    )
+                )
+
         tree.bind(
             "<<TreeviewSelect>>",
             show_details
         )
+
+        # ========================================================
+        # CHANGE FRAUD REVIEW STATUS
+        # ========================================================
 
         def change_status(status):
             def action():
@@ -1497,51 +1747,105 @@ class App(ctk.CTk):
                         "This alert has already been reviewed."
                     )
 
-                if not messagebox.askyesno(
+                note = review_note.get(
+                    "1.0",
+                    "end-1c"
+                ).strip()
+
+                if len(note) > 500:
+                    raise ValueError(
+                        "Review note cannot exceed 500 characters."
+                    )
+
+                confirmed = messagebox.askyesno(
                     "Confirm Decision",
                     (
                         f"Alert ID: {alert_id}\n"
-                        f"New Status: {status}\n\n"
+                        f"New Status: {status}\n"
+                        f"Review Note: {note or '(empty)'}\n\n"
                         "Do you want to continue?"
                     )
-                ):
+                )
+
+                if not confirmed:
                     return
 
-                self.db.review(alert_id, status)
+                self.db.review(
+                    alert_id,
+                    status,
+                    note
+                )
 
                 messagebox.showinfo(
                     "Success",
-                    f"Alert marked as {status}."
+                    (
+                        f"Alert marked as {status}.\n"
+                        "Review information saved."
+                    )
                 )
 
                 self.show_fraud()
 
             self.run(action)
 
-        # Review buttons
-        self.button(
-            actions,
+        # ========================================================
+        # MARK REVIEWED BUTTON
+        # ========================================================
+
+        reviewed_button = self.button(
+            review_actions,
             "Mark Reviewed",
-            lambda: change_status("Reviewed")
-        ).pack(side="left", padx=8, pady=12)
+            lambda: change_status("Reviewed"),
+            width=160
+        )
+        reviewed_button.pack(
+            side="left",
+            padx=8,
+            pady=5
+        )
 
-        self.button(
-            actions,
+        # ========================================================
+        # FALSE POSITIVE BUTTON
+        # ========================================================
+
+        false_positive_button = self.button(
+            review_actions,
             "False Positive",
-            lambda: change_status("FalsePositive")
-        ).pack(side="left", padx=8, pady=12)
+            lambda: change_status("FalsePositive"),
+            width=160
+        )
+        false_positive_button.pack(
+            side="left",
+            padx=8,
+            pady=5
+        )
 
-        self.button(
-            actions,
+        # ========================================================
+        # CONFIRM FRAUD BUTTON
+        # ========================================================
+
+        confirm_fraud_button = self.button(
+            review_actions,
             "Confirm Fraud",
-            lambda: change_status("ConfirmedFraud")
-        ).pack(side="left", padx=8, pady=12)
+            lambda: change_status("ConfirmedFraud"),
+            width=160
+        )
+        confirm_fraud_button.pack(
+            side="left",
+            padx=8,
+            pady=5
+        )
 
-        self.button(
-            actions,
-            "Refresh",
-            lambda: self.run(self.show_fraud)
-        ).pack(side="left", padx=8, pady=12)
+        decision_buttons = (
+            reviewed_button,
+            false_positive_button,
+            confirm_fraud_button
+        )
+
+        # Disable buttons until an alert is selected.
+        for button in decision_buttons:
+            button.configure(state="disabled")
+
 
     # ============================================================
     # FRAUD RULES SCREEN
@@ -1588,6 +1892,127 @@ class App(ctk.CTk):
             )
         ).pack(pady=8)
 
+
+    # ============================================================
+    # CUSTOMER FRAUD REVIEWS SCREEN
+    # ============================================================
+
+
+    def show_customer_fraud_reviews(self):
+        session = self.db.require_login()
+
+        if session["role"] != "Customer":
+            raise PermissionError(
+                "This page is for customers only."
+            )
+
+        page = self.page("My Fraud Reviews")
+
+        ctk.CTkLabel(
+            page,
+            text="Admin reviews related to your transactions",
+            text_color=MUTED,
+            font=("Arial", 15)
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(0, 12)
+        )
+
+        # ========================================================
+        # TABLE COLUMNS
+        # ========================================================
+
+        columns = (
+            "alert",
+            "transaction",
+            "type",
+            "amount",
+            "transaction_description",
+            "rule",
+            "risk",
+            "status",
+            "note",
+            "reviewed"
+        )
+
+        headings = (
+            "Alert ID",
+            "Transaction ID",
+            "Transaction Type",
+            "Amount (TRY)",
+            "Transaction Description",
+            "Fraud Rule",
+            "Risk",
+            "Review Status",
+            "Admin Review Note",
+            "Reviewed At"
+        )
+
+        tree = self.table(
+            page,
+            columns,
+            headings
+        )
+
+        tree.column(
+            "transaction_description",
+            width=230,
+            minwidth=150,
+            anchor="w"
+        )
+
+        tree.column(
+            "note",
+            width=350,
+            anchor="w"
+        )
+
+        # ========================================================
+        # REFRESH REVIEWS
+        # ========================================================
+
+        def refresh_reviews():
+            rows = self.db.customer_fraud_reviews()
+
+            tree.delete(*tree.get_children())
+
+            for row in rows:
+                transaction_description = (
+                    str(row[9])
+                    if row[9] is not None and str(row[9]).strip()
+                    else "-"
+                )
+
+                tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        row[0],
+                        row[1],
+                        row[2],
+                        f"{row[3]:.2f}",
+                        transaction_description,
+                        row[4],
+                        row[5],
+                        row[6],
+                        row[7] if row[7] else "-",
+                        (
+                            str(row[8])[:19]
+                            if row[8] is not None
+                            else "-"
+                        )
+                    )
+                )
+
+        self.button(
+            page,
+            "Refresh Reviews",
+            lambda: self.run(refresh_reviews)
+        ).pack(pady=12)
+
+        self.run(refresh_reviews)
+
     # ============================================================
     # AUDIT LOGS SCREEN
     # ============================================================
@@ -1632,3 +2057,344 @@ class App(ctk.CTk):
                 self.db.logs
             )
         ).pack(pady=8)
+
+    # ============================================================
+    # CUSTOMER NOTIFICATIONS
+    # ============================================================
+
+    def show_notifications(self):
+        session = self.db.require_login()
+
+        if session["role"] != "Customer":
+            raise PermissionError(
+                "Only customers can view notifications."
+            )
+
+        page = self.page("My Notifications")
+
+        rows = self.db.notifications()
+        unread_count = self.db.unread_notification_count()
+
+        info = ctk.CTkFrame(
+            page,
+            fg_color=CARD,
+            corner_radius=12
+        )
+        info.pack(
+            fill="x",
+            padx=18,
+            pady=(5, 10)
+        )
+
+        ctk.CTkLabel(
+            info,
+            text=f"Unread Notifications: {unread_count}",
+            font=("Arial", 17, "bold"),
+            text_color=WHITE
+        ).pack(
+            anchor="w",
+            padx=15,
+            pady=15
+        )
+
+        tree = self.table(
+            page,
+            (
+                "id",
+                "title",
+                "message",
+                "type",
+                "status",
+                "created"
+            ),
+            (
+                "ID",
+                "Title",
+                "Message",
+                "Type",
+                "Status",
+                "Created At"
+            )
+        )
+
+        tree.column(
+            "title",
+            width=200,
+            anchor="w"
+        )
+
+        tree.column(
+            "message",
+            width=450,
+            minwidth=220,
+            anchor="w"
+        )
+
+        for row in rows:
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    "Read" if bool(row[4]) else "Unread",
+                    str(row[5])[:19]
+                )
+            )
+
+        actions = ctk.CTkFrame(
+            page,
+            fg_color="transparent"
+        )
+        actions.pack(pady=12)
+
+        def mark_selected():
+            def action():
+                selected = tree.selection()
+
+                if not selected:
+                    messagebox.showwarning(
+                        "Select Notification",
+                        "Please select a notification."
+                    )
+                    return
+
+                values = tree.item(
+                    selected[0],
+                    "values"
+                )
+
+                notification_id = int(values[0])
+
+                self.db.mark_notification_read(
+                    notification_id
+                )
+
+                self.show_notifications()
+
+            self.run(action)
+
+        def mark_all():
+            def action():
+                self.db.mark_all_notifications_read()
+                self.show_notifications()
+
+            self.run(action)
+
+        self.button(
+            actions,
+            "Mark Selected as Read",
+            mark_selected,
+            width=200
+        ).pack(
+            side="left",
+            padx=8
+        )
+
+        self.button(
+            actions,
+            "Mark All as Read",
+            mark_all,
+            width=180
+        ).pack(
+            side="left",
+            padx=8
+        )
+
+    # ============================================================
+    # ADMIN SEND ANNOUNCEMENT
+    # ============================================================
+
+    def show_send_announcement(self):
+        self.db.require_admin()
+
+        page = self.page("Send Announcement")
+
+        form = ctk.CTkFrame(
+            page,
+            fg_color=CARD,
+            corner_radius=12
+        )
+        form.pack(
+            fill="x",
+            padx=18,
+            pady=12
+        )
+
+        ctk.CTkLabel(
+            form,
+            text="Send Announcement to Customers",
+            font=("Arial", 18, "bold"),
+            text_color=WHITE
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(20, 12)
+        )
+
+        # Recipient selection
+        ctk.CTkLabel(
+            form,
+            text="Recipient",
+            text_color=WHITE
+        ).pack(
+            anchor="w",
+            padx=20
+        )
+
+        customers = self.db.customers()
+
+        customer_map = {}
+
+        for row in customers:
+            customer_id = int(row[0])
+
+            # Only active customers.
+            if not bool(row[7]):
+                continue
+
+            customer_name = (
+                f"{row[1]} {row[2]}"
+            ).strip()
+
+            label = (
+                f"{customer_name} "
+                f"(ID: {customer_id})"
+            )
+
+            customer_map[label] = customer_id
+
+        recipient_options = (
+            ["All Active Customers"]
+            + sorted(customer_map.keys())
+        )
+
+        recipient = ctk.CTkComboBox(
+            form,
+            values=recipient_options,
+            width=400,
+            state="readonly"
+        )
+        recipient.pack(
+            anchor="w",
+            padx=20,
+            pady=(5, 15)
+        )
+        recipient.set("All Active Customers")
+
+        # Announcement title
+        ctk.CTkLabel(
+            form,
+            text="Announcement Title",
+            text_color=WHITE
+        ).pack(
+            anchor="w",
+            padx=20
+        )
+
+        title_entry = ctk.CTkEntry(
+            form,
+            placeholder_text="Enter announcement title",
+            width=500,
+            height=42
+        )
+        title_entry.pack(
+            anchor="w",
+            padx=20,
+            pady=(5, 15)
+        )
+
+        # Announcement message
+        ctk.CTkLabel(
+            form,
+            text="Announcement Message",
+            text_color=WHITE
+        ).pack(
+            anchor="w",
+            padx=20
+        )
+
+        message_entry = ctk.CTkTextbox(
+            form,
+            width=650,
+            height=180,
+            fg_color=SIDEBAR,
+            text_color=WHITE,
+            corner_radius=8
+        )
+        message_entry.pack(
+            anchor="w",
+            padx=20,
+            pady=(5, 15)
+        )
+
+        def send():
+            def action():
+                title = title_entry.get().strip()
+
+                message = message_entry.get(
+                    "1.0",
+                    "end-1c"
+                ).strip()
+
+                if not title or not message:
+                    raise ValueError(
+                        "Title and message are required."
+                    )
+
+                selected = recipient.get()
+
+                if selected == "All Active Customers":
+                    customer_id = None
+                    recipient_text = "all active customers"
+                else:
+                    if selected not in customer_map:
+                        raise ValueError(
+                            "Please select a valid customer."
+                        )
+
+                    customer_id = customer_map[selected]
+                    recipient_text = selected
+
+                confirmed = messagebox.askyesno(
+                    "Confirm Announcement",
+                    (
+                        f"Recipient: {recipient_text}\n\n"
+                        f"Title: {title}\n\n"
+                        "Do you want to send this announcement?"
+                    )
+                )
+
+                if not confirmed:
+                    return
+
+                sent_count = self.db.send_announcement(
+                    title,
+                    message,
+                    customer_id
+                )
+
+                messagebox.showinfo(
+                    "Announcement Sent",
+                    (
+                        "Announcement sent successfully.\n"
+                        f"Recipients: {sent_count}"
+                    )
+                )
+
+                self.show_send_announcement()
+
+            self.run(action)
+
+        self.button(
+            form,
+            "Send Announcement",
+            send,
+            width=220
+        ).pack(
+            anchor="w",
+            padx=20,
+            pady=(5, 25)
+        )

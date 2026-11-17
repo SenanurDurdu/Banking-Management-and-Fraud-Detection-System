@@ -6,6 +6,10 @@ class AccountsMixin:
 
     MAX_ACTIVE_ACCOUNTS = 3
 
+    # ========================================================
+    # ACCOUNTS - ADMIN / CUSTOMER
+    # ========================================================
+
     def accounts(self):
         session = self.require_login()
         con = connect()
@@ -49,6 +53,10 @@ class AccountsMixin:
 
         finally:
             con.close()
+
+    # ========================================================
+    # CREATE ACCOUNT - CUSTOMER
+    # ========================================================
 
     def add_account(
         self,
@@ -155,7 +163,7 @@ class AccountsMixin:
                     "Could not generate an account number."
                 )
 
-            # Temporary compatibility with existing SQL schema.
+            # Compatible with the existing SQL schema.
             cur.execute(
                 """
                 INSERT INTO Accounts
@@ -194,13 +202,27 @@ class AccountsMixin:
         finally:
             con.close()
 
+    # ========================================================
+    # CLOSE ACCOUNT - CUSTOMER ONLY
+    # ========================================================
+
     def delete_account(self, account_id):
         session = self.require_login()
 
-        if session["role"] != "Admin":
+        # Only customers can close their own accounts.
+        if session["role"] != "Customer":
             raise PermissionError(
-                "Only admins can delete bank accounts."
+                "Only customers can close their own bank accounts."
             )
+
+        customer_id = session["customer_id"]
+
+        if customer_id is None:
+            raise PermissionError(
+                "Customer account not found."
+            )
+
+        customer_id = int(customer_id)
 
         try:
             account_id = int(account_id)
@@ -218,7 +240,7 @@ class AccountsMixin:
         try:
             cur = con.cursor()
 
-            # Lock the account while checking its balance.
+            # Lock the account while checking ownership and balance.
             account = cur.execute(
                 """
                 SELECT
@@ -226,15 +248,17 @@ class AccountsMixin:
                     CustomerID,
                     Balance,
                     IsActive
-                FROM Accounts WITH (UPDLOCK, HOLDLOCK)
+                FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
                 WHERE AccountID = ?
+                  AND CustomerID = ?
                 """,
-                account_id
+                account_id,
+                customer_id
             ).fetchone()
 
             if not account:
                 raise ValueError(
-                    "Bank account not found."
+                    "Bank account not found or does not belong to you."
                 )
 
             if not bool(account.IsActive):
@@ -244,25 +268,26 @@ class AccountsMixin:
 
             if account.Balance != 0:
                 raise ValueError(
-                    "Only accounts with 0 TRY balance "
-                    "can be deleted."
+                    "Only accounts with 0 TRY balance can be closed."
                 )
 
-            # Soft delete: keep transactions and history.
+            # Soft delete: preserve transactions and fraud history.
             cur.execute(
                 """
-                UPDATE Accounts
+                UPDATE dbo.Accounts
                 SET IsActive = 0
                 WHERE AccountID = ?
+                  AND CustomerID = ?
                   AND IsActive = 1
                   AND Balance = 0
                 """,
-                account_id
+                account_id,
+                customer_id
             )
 
             if cur.rowcount != 1:
                 raise ValueError(
-                    "Account could not be deactivated."
+                    "Account could not be closed."
                 )
 
             audit(
@@ -270,10 +295,7 @@ class AccountsMixin:
                 "DELETE",
                 "Account",
                 account_id,
-                (
-                    "Admin deactivated a zero-balance "
-                    "bank account."
-                )
+                "Customer closed their own zero-balance bank account."
             )
 
             con.commit()

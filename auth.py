@@ -6,6 +6,10 @@ class AuthMixin:
     def __init__(self):
         self.session = None
 
+    # ========================================================
+    # REGISTER
+    # ========================================================
+
     def register(
         self,
         first,
@@ -35,11 +39,18 @@ class AuthMixin:
                 phone
             )
 
+            # Create customer
             cur.execute(
                 """
-                INSERT INTO Customers
-                    (FirstName, LastName, NationalID,
-                     Phone, Email, Address)
+                INSERT INTO dbo.Customers
+                (
+                    FirstName,
+                    LastName,
+                    NationalID,
+                    Phone,
+                    Email,
+                    Address
+                )
                 OUTPUT INSERTED.CustomerID
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
@@ -53,10 +64,17 @@ class AuthMixin:
 
             customer_id = int(cur.fetchone()[0])
 
+            # Create login user and retrieve UserID
             cur.execute(
                 """
-                INSERT INTO Users
-                    (CustomerID, Email, PasswordHash, Role)
+                INSERT INTO dbo.Users
+                (
+                    CustomerID,
+                    Email,
+                    PasswordHash,
+                    Role
+                )
+                OUTPUT INSERTED.UserID
                 VALUES (?, ?, ?, 'Customer')
                 """,
                 customer_id,
@@ -64,12 +82,16 @@ class AuthMixin:
                 HASHER.hash(password)
             )
 
+            user_id = int(cur.fetchone()[0])
+
+            # Audit with the newly created UserID
             audit(
                 cur,
                 "REGISTER",
                 "Customer",
                 customer_id,
-                "Customer registered"
+                "Customer registered",
+                user_id=user_id
             )
 
             con.commit()
@@ -86,6 +108,10 @@ class AuthMixin:
         finally:
             con.close()
 
+    # ========================================================
+    # LOGIN
+    # ========================================================
+
     def login(self, email, password):
         email = email.strip().lower()
         con = connect()
@@ -95,16 +121,22 @@ class AuthMixin:
 
             user = cur.execute(
                 """
-                SELECT u.UserID, u.CustomerID, u.Email,
-                       u.PasswordHash, u.Role
-                FROM Users u
-                LEFT JOIN Customers c
+                SELECT
+                    u.UserID,
+                    u.CustomerID,
+                    u.Email,
+                    u.PasswordHash,
+                    u.Role
+                FROM dbo.Users AS u
+                LEFT JOIN dbo.Customers AS c
                     ON c.CustomerID = u.CustomerID
                 WHERE u.Email = ?
                   AND u.IsActive = 1
-                  AND (
+                  AND
+                  (
                       u.Role = 'Admin'
-                      OR (
+                      OR
+                      (
                           u.Role = 'Customer'
                           AND c.IsActive = 1
                       )
@@ -123,6 +155,7 @@ class AuthMixin:
                     user.PasswordHash,
                     password
                 )
+
             except (
                 VerifyMismatchError,
                 VerificationError,
@@ -134,11 +167,24 @@ class AuthMixin:
                     "Invalid email or password."
                 )
 
+            # Update successful login timestamp
             cur.execute(
-                "UPDATE Users "
-                "SET LastLoginAt = SYSDATETIME() "
-                "WHERE UserID = ?",
+                """
+                UPDATE dbo.Users
+                SET LastLoginAt = SYSDATETIME()
+                WHERE UserID = ?
+                """,
                 user.UserID
+            )
+
+            # Record successful login
+            audit(
+                cur,
+                "LOGIN",
+                "Users",
+                int(user.UserID),
+                "User signed in successfully",
+                user_id=int(user.UserID)
             )
 
             con.commit()
@@ -156,11 +202,54 @@ class AuthMixin:
 
             return self.session.copy()
 
+        except Exception:
+            con.rollback()
+            raise
+
         finally:
             con.close()
 
+    # ========================================================
+    # LOGOUT
+    # ========================================================
+
     def logout(self):
+        session = self.session
+
+        if session is None:
+            return
+
+        # Clear the local session immediately.
         self.session = None
+
+        # Record explicit logout.
+        # A database error should not restore the session.
+        con = connect()
+
+        try:
+            cur = con.cursor()
+
+            audit(
+                cur,
+                "LOGOUT",
+                "Users",
+                session["user_id"],
+                "User signed out",
+                user_id=session["user_id"]
+            )
+
+            con.commit()
+
+        except Exception:
+            con.rollback()
+            raise
+
+        finally:
+            con.close()
+
+    # ========================================================
+    # REQUIRE LOGIN
+    # ========================================================
 
     def require_login(self):
         if not self.session:
@@ -173,15 +262,19 @@ class AuthMixin:
         try:
             row = con.cursor().execute(
                 """
-                SELECT u.CustomerID, u.Role
-                FROM Users u
-                LEFT JOIN Customers c
+                SELECT
+                    u.CustomerID,
+                    u.Role
+                FROM dbo.Users AS u
+                LEFT JOIN dbo.Customers AS c
                     ON c.CustomerID = u.CustomerID
                 WHERE u.UserID = ?
                   AND u.IsActive = 1
-                  AND (
+                  AND
+                  (
                       u.Role = 'Admin'
-                      OR (
+                      OR
+                      (
                           u.Role = 'Customer'
                           AND c.IsActive = 1
                       )
@@ -195,7 +288,10 @@ class AuthMixin:
                 or row.Role != self.session["role"]
                 or row.CustomerID != self.session["customer_id"]
             ):
-                self.logout()
+                # Clear invalid session without requiring
+                # another database connection.
+                self.session = None
+
                 raise PermissionError(
                     "Session is no longer valid."
                 )
@@ -204,6 +300,10 @@ class AuthMixin:
 
         finally:
             con.close()
+
+    # ========================================================
+    # REQUIRE ADMIN
+    # ========================================================
 
     def require_admin(self):
         session = self.require_login()
