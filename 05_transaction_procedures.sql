@@ -17,6 +17,10 @@
 -- IMPORTANT:
 --   No transaction is executed by this setup script.
 --   Existing records are not deleted or modified.
+--
+-- NEW FEATURE:
+--   Frozen accounts cannot perform banking transactions.
+--   Existing balances and transaction history are preserved.
 -- ============================================================
 
 USE BankingFraudDB;
@@ -47,9 +51,11 @@ BEGIN
         @SourceBalance DECIMAL(18,2),
         @SourceCurrency CHAR(3),
         @SourceActive BIT,
+        @SourceFrozen BIT,
         @DestinationBalance DECIMAL(18,2),
         @DestinationCurrency CHAR(3),
         @DestinationActive BIT,
+        @DestinationFrozen BIT,
         @FromID INT = NULL,
         @ToID INT = NULL,
         @TransactionID BIGINT,
@@ -198,12 +204,19 @@ BEGIN
             @SourceCustomerID = CustomerID,
             @SourceBalance = Balance,
             @SourceCurrency = Currency,
-            @SourceActive = IsActive
+            @SourceActive = IsActive,
+            @SourceFrozen = IsFrozen
         FROM dbo.Accounts
         WHERE AccountID = @SourceAccountID;
 
         IF @SourceActive IS NULL OR @SourceActive <> 1
             THROW 51011, 'Source account is unavailable.', 1;
+
+        -- NEW: Block transactions on frozen accounts.
+        IF @SourceFrozen = 1
+            THROW 51017,
+                'This account is frozen. Transactions are disabled.',
+                1;
 
         IF @Role = 'Customer'
            AND
@@ -223,7 +236,8 @@ BEGIN
             SELECT
                 @DestinationBalance = Balance,
                 @DestinationCurrency = Currency,
-                @DestinationActive = IsActive
+                @DestinationActive = IsActive,
+                @DestinationFrozen = IsFrozen
             FROM dbo.Accounts
             WHERE AccountID = @DestinationAccountID
               AND AccountNumber = @DestinationAccountNumber;
@@ -231,6 +245,12 @@ BEGIN
             IF @DestinationActive IS NULL
                OR @DestinationActive <> 1
                 THROW 51013, 'Recipient account is unavailable.', 1;
+
+            -- NEW: Block incoming transfers to frozen accounts.
+            IF @DestinationFrozen = 1
+                THROW 51018,
+                    'Recipient account is frozen. Transfer is disabled.',
+                    1;
 
             IF @SourceCurrency <> @DestinationCurrency
                 THROW 51014, 'Different currencies are not supported.', 1;
@@ -498,12 +518,40 @@ GO
 
 
 -- ============================================================
--- 7. FINISH
+-- 7. VERIFY ACCOUNT FREEZE PROTECTION
+-- ============================================================
+
+-- Read-only verification.
+-- Checks whether freeze protection exists in the procedure.
+
+SELECT
+    CASE
+        WHEN OBJECT_DEFINITION(
+            OBJECT_ID(N'dbo.sp_ExecuteBankTransaction')
+        ) LIKE '%@SourceFrozen%'
+        AND OBJECT_DEFINITION(
+            OBJECT_ID(N'dbo.sp_ExecuteBankTransaction')
+        ) LIKE '%@DestinationFrozen%'
+        AND OBJECT_DEFINITION(
+            OBJECT_ID(N'dbo.sp_ExecuteBankTransaction')
+        ) LIKE '%51017%'
+        AND OBJECT_DEFINITION(
+            OBJECT_ID(N'dbo.sp_ExecuteBankTransaction')
+        ) LIKE '%51018%'
+        THEN 'PASS'
+        ELSE 'CHECK REQUIRED'
+    END AS FreezeProtection;
+GO
+
+
+-- ============================================================
+-- 8. FINISH
 -- ============================================================
 
 PRINT '============================================';
 PRINT '05_transaction_procedures.sql completed.';
 PRINT '4 transaction procedures checked.';
+PRINT 'Account freeze protection added.';
 PRINT 'No banking transaction was executed.';
 PRINT 'Existing records were preserved.';
 PRINT '============================================';

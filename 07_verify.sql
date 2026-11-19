@@ -1030,7 +1030,13 @@ SELECT 'FraudAlerts', COUNT(*) FROM dbo.FraudAlerts
 UNION ALL
 SELECT 'AuditLogs', COUNT(*) FROM dbo.AuditLogs
 UNION ALL
-SELECT 'Notifications', COUNT(*) FROM dbo.Notifications;
+SELECT 'Notifications', COUNT(*) FROM dbo.Notifications
+UNION ALL 
+SELECT 'CreditCards', COUNT(*) FROM dbo.CreditCards
+UNION ALL
+SELECT 'CreditCardsApplications', COUNT(*) FROM dbo.CreditCardApplications
+UNION ALL
+SELECT 'CreditCardTransactions', COUNT(*) FROM dbo.CreditCardTransactions;
 
 -- ============================================================
 -- 38. VERIFY TRANSACTION SUMMARY
@@ -1161,7 +1167,7 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
 -- 42. VERIFY EXPECTED OBJECTS - FINAL SUMMARY
 -- ============================================================
 
-SELECT
+/*SELECT
     DB_NAME() AS DatabaseName,
 
     (
@@ -1208,9 +1214,78 @@ SELECT
               N'sp_Transfer',
               N'sp_ScanFraud'
           )
-    ) AS ProcedureCount;
+    ) AS ProcedureCount;*/
 
 
 -- ============================================================
 -- END OF 07_verify.sql
 -- ============================================================
+-- ============================================================
+-- 35.  CLEANİNG THE DATABASE 
+-- ============================================================
+/* USE BankingFraudDB;
+GO
+
+SET XACT_ABORT ON;
+
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    -- Delete dependent records first
+    DELETE FROM dbo.Notifications;
+    DELETE FROM dbo.FraudAlerts;
+    DELETE FROM dbo.AuditLogs;
+
+    -- Credit card tables
+    DELETE FROM dbo.CreditCardTransactions;
+    DELETE FROM dbo.CreditCards;
+    DELETE FROM dbo.CreditCardApplications;
+
+    DELETE FROM dbo.Transactions;
+    DELETE FROM dbo.Users;
+    DELETE FROM dbo.Accounts;
+    DELETE FROM dbo.Customers;
+
+    -- Reset identity counters
+    DBCC CHECKIDENT ('dbo.Notifications', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.FraudAlerts', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.AuditLogs', RESEED, 0);
+
+    DBCC CHECKIDENT ('dbo.CreditCardTransactions', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.CreditCards', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.CreditCardApplications', RESEED, 0);
+
+    DBCC CHECKIDENT ('dbo.Transactions', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.Users', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.Accounts', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.Customers', RESEED, 0);
+
+    -- FraudRules are preserved
+
+    COMMIT TRANSACTION;
+
+    PRINT 'Test data deleted and identity counters reset.';
+
+END TRY
+BEGIN CATCH
+
+    IF XACT_STATE() <> 0
+        ROLLBACK TRANSACTION;
+
+    PRINT ERROR_MESSAGE();
+
+END CATCH;
+GO */
+
+
+SELECT * FROM FraudRules;
+SELECT * FROM Users;
+SELECT * FROM Accounts;
+SELECT * FROM Transactions;
+SELECT * FROM FraudAlerts;
+SELECT * FROM AuditLogs;
+SELECT * FROM Customers;
+SELECT * FROM Notifications;
+SELECT * FROM CreditCardApplications;
+SELECT * FROM CreditCards;
+SELECT * FROM CreditCardTransactions;
