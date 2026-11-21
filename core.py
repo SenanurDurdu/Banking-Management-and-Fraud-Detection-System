@@ -35,7 +35,7 @@ DB_TRUSTED = os.getenv(
 DB_USERNAME = os.getenv("DB_USERNAME", "sa")
 
 # Database password must be supplied externally.
-DB_PASSWORD = os.getenv("DB_PASSWORD", "Sd-135798834")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 ADMIN_EMAIL = os.getenv(
     "ADMIN_EMAIL",
