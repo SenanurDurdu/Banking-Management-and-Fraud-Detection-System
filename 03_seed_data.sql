@@ -1,17 +1,13 @@
 
 -- ============================================================
--- BANKING MANAGEMENT & FRAUD DETECTION SYSTEM
--- FILE: 03_seed_fraud_rules.sql
--- PURPOSE: Default fraud detection rules
+-- NG BANK
+-- FILE: 03_seed_data.sql
+-- PURPOSE: Insert default fraud detection rules
+-- RUN AFTER: 01_schema.sql and 02_constraints_indexes.sql
+-- STATUS: DRAFT - SQL SERVER TEST PENDING
 --
--- RUN AFTER:
---   01_schema.sql
---   02_constraints_indexes.sql
---
--- IMPORTANT:
---   Existing fraud rules are preserved.
---   Existing thresholds are not overwritten.
---   Existing records are not deleted.
+-- Existing rules and thresholds are preserved.
+-- No existing records are deleted.
 -- ============================================================
 
 USE BankingFraudDB;
@@ -20,21 +16,12 @@ GO
 SET NOCOUNT ON;
 GO
 
-
 -- ============================================================
 -- 1. HIGH AMOUNT RULE
+-- Detect transactions of 50,000 TRY or more.
 -- ============================================================
 
--- Detect transactions with an amount of 50,000 or more.
---
--- RuleType: HighAmount
--- ThresholdValue: 50000
--- TimeWindowMinutes: 60
---
--- The fraud scanner uses the amount threshold directly.
-
-IF NOT EXISTS
-(
+IF NOT EXISTS (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'HighAmount'
@@ -65,22 +52,12 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
 -- 2. FREQUENT TRANSACTIONS RULE
+-- Detect 5 or more transactions within 10 minutes.
 -- ============================================================
 
--- Detect frequent transactions involving the same account.
---
--- RuleType: Frequent
--- ThresholdValue: 5
--- TimeWindowMinutes: 10
---
--- Five or more matching completed transactions
--- within 10 minutes trigger the rule.
-
-IF NOT EXISTS
-(
+IF NOT EXISTS (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'Frequent'
@@ -111,23 +88,12 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
 -- 3. REPEATED AMOUNT RULE
+-- Detect 3 same-amount transactions within 60 minutes.
 -- ============================================================
 
--- Detect repeated transactions with the same amount.
---
--- RuleType: RepeatedAmount
--- ThresholdValue: 3
--- TimeWindowMinutes: 60
---
--- Three or more matching completed transactions
--- with the same amount within 60 minutes
--- trigger the rule.
-
-IF NOT EXISTS
-(
+IF NOT EXISTS (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'RepeatedAmount'
@@ -158,9 +124,8 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
--- 4. VERIFY FRAUD RULES
+-- 4. VERIFY INSERTED RULES
 -- ============================================================
 
 SELECT
@@ -174,36 +139,14 @@ FROM dbo.FraudRules
 ORDER BY RuleID;
 GO
 
-
 -- ============================================================
--- 5. VERIFY RULE COUNTS
--- ============================================================
-
-SELECT
-    RuleType,
-    COUNT(*) AS RuleCount,
-    SUM
-    (
-        CASE
-            WHEN IsActive = 1 THEN 1
-            ELSE 0
-        END
-    ) AS ActiveRuleCount
-FROM dbo.FraudRules
-GROUP BY RuleType
-ORDER BY RuleType;
-GO
-
-
--- ============================================================
--- 6. VERIFY EXPECTED RULE TYPES
+-- 5. VERIFY REQUIRED RULE TYPES
 -- ============================================================
 
 SELECT
     Expected.RuleType,
     CASE
-        WHEN EXISTS
-        (
+        WHEN EXISTS (
             SELECT 1
             FROM dbo.FraudRules AS fr
             WHERE fr.RuleType = Expected.RuleType
@@ -211,8 +154,7 @@ SELECT
         THEN 'EXISTS'
         ELSE 'MISSING'
     END AS RuleStatus
-FROM
-(
+FROM (
     VALUES
         ('HighAmount'),
         ('Frequent'),
@@ -220,15 +162,5 @@ FROM
 ) AS Expected(RuleType);
 GO
 
-
--- ============================================================
--- 7. FINISH
--- ============================================================
-
-PRINT '============================================';
-PRINT '03_seed_fraud_rules.sql completed.';
-PRINT 'Default fraud rules checked.';
-PRINT 'Existing rule settings were preserved.';
-PRINT 'No existing records were deleted.';
-PRINT '============================================';
+PRINT 'NG BANK default fraud rules checked.';
 GO

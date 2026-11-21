@@ -1,12 +1,12 @@
 
 -- ============================================================
--- BANKING MANAGEMENT & FRAUD DETECTION SYSTEM
+-- NG BANK
 -- FILE: 01_schema.sql
--- PURPOSE: Database and core tables
--- ============================================================
--- Run this file first.
--- Existing tables and records are preserved.
--- SQL Server 2016 SP1 or later is recommended.
+-- PURPOSE: Consolidated database and table schema
+-- STATUS: DRAFT - NOT YET TESTED ON SQL SERVER
+--
+-- Contains all 11 application tables.
+-- Run only on a new, empty test database.
 -- ============================================================
 
 IF DB_ID(N'BankingFraudDB') IS NULL
@@ -17,7 +17,6 @@ GO
 
 USE BankingFraudDB;
 GO
-
 
 -- ============================================================
 -- 1. CUSTOMERS
@@ -53,7 +52,6 @@ BEGIN
     );
 END;
 GO
-
 
 -- ============================================================
 -- 2. USERS
@@ -99,7 +97,6 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
 -- 3. ACCOUNTS
 -- ============================================================
@@ -131,6 +128,10 @@ BEGIN
             CONSTRAINT DF_Accounts_IsActive
             DEFAULT 1,
 
+        IsFrozen BIT NOT NULL
+            CONSTRAINT DF_Accounts_IsFrozen
+            DEFAULT 0,
+
         CONSTRAINT FK_Accounts_Customers
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID),
@@ -146,7 +147,6 @@ BEGIN
     );
 END;
 GO
-
 
 -- ============================================================
 -- 4. TRANSACTIONS
@@ -198,7 +198,6 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
 -- 5. FRAUD RULES
 -- ============================================================
@@ -239,7 +238,6 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
 -- 6. FRAUD ALERTS
 -- ============================================================
@@ -251,7 +249,8 @@ BEGIN
         AlertID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_FraudAlerts PRIMARY KEY,
 
-        TransactionID BIGINT NOT NULL,
+        TransactionID BIGINT NULL,
+        CardTransactionID BIGINT NULL,
         RuleID INT NOT NULL,
         AlertDescription NVARCHAR(500) NOT NULL,
 
@@ -283,8 +282,19 @@ BEGIN
             FOREIGN KEY (ReviewedByUserID)
             REFERENCES dbo.Users(UserID),
 
-        CONSTRAINT UQ_Alert
-            UNIQUE (TransactionID, RuleID),
+        CONSTRAINT CK_FraudAlerts_TransactionReference
+            CHECK
+            (
+                (
+                    TransactionID IS NOT NULL
+                    AND CardTransactionID IS NULL
+                )
+                OR
+                (
+                    TransactionID IS NULL
+                    AND CardTransactionID IS NOT NULL
+                )
+            ),
 
         CONSTRAINT CK_FraudAlerts_ReviewStatus
             CHECK
@@ -300,7 +310,6 @@ BEGIN
     );
 END;
 GO
-
 
 -- ============================================================
 -- 7. AUDIT LOGS
@@ -329,7 +338,6 @@ BEGIN
     );
 END;
 GO
-
 
 -- ============================================================
 -- 8. NOTIFICATIONS
@@ -365,28 +373,286 @@ BEGIN
 END;
 GO
 
+-- ============================================================
+-- 9. CREDIT CARD APPLICATIONS
+-- ============================================================
+
+IF OBJECT_ID(N'dbo.CreditCardApplications', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CreditCardApplications
+    (
+        ApplicationID BIGINT IDENTITY(1,1)
+            CONSTRAINT PK_CreditCardApplications PRIMARY KEY,
+
+        CustomerID INT NOT NULL,
+        CardType VARCHAR(20) NOT NULL,
+        RequestedLimit DECIMAL(18,2) NOT NULL,
+
+        Currency CHAR(3) NOT NULL
+            CONSTRAINT DF_CreditCardApplications_Currency
+            DEFAULT 'TRY',
+
+        ApplicationStatus VARCHAR(20) NOT NULL
+            CONSTRAINT DF_CreditCardApplications_Status
+            DEFAULT 'Pending',
+
+        AppliedAt DATETIME2 NOT NULL
+            CONSTRAINT DF_CreditCardApplications_AppliedAt
+            DEFAULT SYSDATETIME(),
+
+        ReviewedByUserID INT NULL,
+        ReviewedAt DATETIME2 NULL,
+        ReviewNote NVARCHAR(500) NULL,
+
+        CONSTRAINT FK_CreditCardApplications_Customers
+            FOREIGN KEY (CustomerID)
+            REFERENCES dbo.Customers(CustomerID),
+
+        CONSTRAINT FK_CreditCardApplications_Users
+            FOREIGN KEY (ReviewedByUserID)
+            REFERENCES dbo.Users(UserID),
+
+        CONSTRAINT CK_CreditCardApplications_CardType
+            CHECK (CardType IN ('Standard', 'Gold')),
+
+        CONSTRAINT CK_CreditCardApplications_Limit
+            CHECK
+            (
+                RequestedLimit IN
+                (5000, 10000, 25000, 50000)
+            ),
+
+        CONSTRAINT CK_CreditCardApplications_Currency
+            CHECK (Currency = 'TRY'),
+
+        CONSTRAINT CK_CreditCardApplications_Status
+            CHECK
+            (
+                ApplicationStatus IN
+                ('Pending', 'Approved', 'Rejected')
+            )
+    );
+END;
+GO
 
 -- ============================================================
--- VERIFICATION
+-- 10. CREDIT CARDS
+-- ============================================================
+
+IF OBJECT_ID(N'dbo.CreditCards', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CreditCards
+    (
+        CreditCardID BIGINT IDENTITY(1,1)
+            CONSTRAINT PK_CreditCards PRIMARY KEY,
+
+        ApplicationID BIGINT NOT NULL,
+        CustomerID INT NOT NULL,
+        LinkedAccountID INT NOT NULL,
+        CardNumber VARCHAR(19) NOT NULL,
+        CardType VARCHAR(20) NOT NULL,
+        CreditLimit DECIMAL(18,2) NOT NULL,
+
+        OutstandingBalance DECIMAL(18,2) NOT NULL
+            CONSTRAINT DF_CreditCards_OutstandingBalance
+            DEFAULT 0,
+
+        Currency CHAR(3) NOT NULL
+            CONSTRAINT DF_CreditCards_Currency
+            DEFAULT 'TRY',
+
+        CardStatus VARCHAR(20) NOT NULL
+            CONSTRAINT DF_CreditCards_Status
+            DEFAULT 'Active',
+
+        IssuedAt DATETIME2 NOT NULL
+            CONSTRAINT DF_CreditCards_IssuedAt
+            DEFAULT SYSDATETIME(),
+
+        ExpiresAt DATE NOT NULL,
+
+        CONSTRAINT FK_CreditCards_Applications
+            FOREIGN KEY (ApplicationID)
+            REFERENCES dbo.CreditCardApplications(ApplicationID),
+
+        CONSTRAINT FK_CreditCards_Customers
+            FOREIGN KEY (CustomerID)
+            REFERENCES dbo.Customers(CustomerID),
+
+        CONSTRAINT FK_CreditCards_Accounts
+            FOREIGN KEY (LinkedAccountID)
+            REFERENCES dbo.Accounts(AccountID),
+
+        CONSTRAINT UQ_CreditCards_Application
+            UNIQUE (ApplicationID),
+
+        CONSTRAINT UQ_CreditCards_Number
+            UNIQUE (CardNumber),
+
+        CONSTRAINT CK_CreditCards_Type
+            CHECK (CardType IN ('Standard', 'Gold')),
+
+        CONSTRAINT CK_CreditCards_Limit
+            CHECK (CreditLimit > 0),
+
+        CONSTRAINT CK_CreditCards_Balance
+            CHECK
+            (
+                OutstandingBalance >= 0
+                AND OutstandingBalance <= CreditLimit
+            ),
+
+        CONSTRAINT CK_CreditCards_Currency
+            CHECK (Currency = 'TRY'),
+
+        CONSTRAINT CK_CreditCards_Status
+            CHECK
+            (
+                CardStatus IN
+                ('Active', 'Frozen', 'Closed')
+            )
+    );
+END;
+GO
+
+-- ============================================================
+-- 11. CREDIT CARD TRANSACTIONS
+-- ============================================================
+
+IF OBJECT_ID(N'dbo.CreditCardTransactions', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CreditCardTransactions
+    (
+        CardTransactionID BIGINT IDENTITY(1,1)
+            CONSTRAINT PK_CreditCardTransactions PRIMARY KEY,
+
+        CreditCardID BIGINT NOT NULL,
+        BankTransactionID BIGINT NULL,
+        TransactionType VARCHAR(20) NOT NULL,
+        Amount DECIMAL(18,2) NOT NULL,
+        Description NVARCHAR(500) NULL,
+
+        TransactionStatus VARCHAR(20) NOT NULL
+            CONSTRAINT DF_CreditCardTransactions_Status
+            DEFAULT 'Completed',
+
+        CreatedAt DATETIME2 NOT NULL
+            CONSTRAINT DF_CreditCardTransactions_CreatedAt
+            DEFAULT SYSDATETIME(),
+
+        CONSTRAINT FK_CreditCardTransactions_Cards
+            FOREIGN KEY (CreditCardID)
+            REFERENCES dbo.CreditCards(CreditCardID),
+
+        CONSTRAINT FK_CreditCardTransactions_BankTransaction
+            FOREIGN KEY (BankTransactionID)
+            REFERENCES dbo.Transactions(TransactionID),
+
+        CONSTRAINT CK_CreditCardTransactions_Type
+            CHECK
+            (
+                TransactionType IN
+                (
+                    'Purchase',
+                    'Payment',
+                    'Refund',
+                    'CashAdvance'
+                )
+            ),
+
+        CONSTRAINT CK_CreditCardTransactions_Amount
+            CHECK (Amount > 0),
+
+        CONSTRAINT CK_CreditCardTransactions_Status
+            CHECK
+            (
+                TransactionStatus IN
+                (
+                    'Completed',
+                    'Declined',
+                    'Reversed'
+                )
+            )
+    );
+END;
+GO
+
+-- ============================================================
+-- 12. DEFERRED FOREIGN KEY
+--
+-- FraudAlerts is created before CreditCardTransactions.
+-- Add the card transaction relationship after both exist.
+-- ============================================================
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.foreign_keys
+    WHERE name = N'FK_FraudAlerts_CardTransactions'
+      AND parent_object_id = OBJECT_ID(N'dbo.FraudAlerts')
+)
+BEGIN
+    ALTER TABLE dbo.FraudAlerts
+    WITH CHECK ADD CONSTRAINT FK_FraudAlerts_CardTransactions
+        FOREIGN KEY (CardTransactionID)
+        REFERENCES dbo.CreditCardTransactions(CardTransactionID);
+END;
+GO
+
+-- ============================================================
+-- 13. FRAUD ALERT UNIQUE INDEXES
+--
+-- Prevent duplicate alerts for the same fraud rule.
+-- Separate bank and card transaction references.
+-- ============================================================
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.FraudAlerts')
+      AND name = N'UX_FraudAlerts_BankRule'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_FraudAlerts_BankRule
+        ON dbo.FraudAlerts(TransactionID, RuleID)
+        WHERE TransactionID IS NOT NULL;
+END;
+GO
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID(N'dbo.FraudAlerts')
+      AND name = N'UX_FraudAlerts_CardRule'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_FraudAlerts_CardRule
+        ON dbo.FraudAlerts(CardTransactionID, RuleID)
+        WHERE CardTransactionID IS NOT NULL;
+END;
+GO
+
+-- ============================================================
+-- 14. BASIC SCHEMA VERIFICATION
 -- ============================================================
 
 SELECT
-    t.name AS TableName
-FROM sys.tables AS t
-WHERE t.schema_id = SCHEMA_ID(N'dbo')
-  AND t.name IN
-  (
-      N'Customers',
-      N'Users',
-      N'Accounts',
-      N'Transactions',
-      N'FraudRules',
-      N'FraudAlerts',
-      N'AuditLogs',
-      N'Notifications'
-  )
-ORDER BY t.name;
+    TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = 'dbo'
+  AND TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_NAME;
 GO
 
-PRINT '01_schema.sql completed.';
+SELECT
+    fk.name AS ForeignKeyName,
+    OBJECT_NAME(fk.parent_object_id) AS SourceTable,
+    OBJECT_NAME(fk.referenced_object_id) AS TargetTable
+FROM sys.foreign_keys AS fk
+ORDER BY SourceTable, ForeignKeyName;
+GO
+
+PRINT 'NG BANK consolidated schema draft completed.';
 GO

@@ -553,7 +553,7 @@ class DashboardMixin:
             # COUNT
             count_sql = f"""
                 SELECT COUNT(*)
-                FROM BankingFraudDB.dbo.AuditLogs
+                FROM dbo.AuditLogs
                 {where_clause}
             """
 
@@ -569,7 +569,7 @@ class DashboardMixin:
                     EntityID,
                     Description,
                     CreatedAt
-                FROM BankingFraudDB.dbo.AuditLogs
+                FROM dbo.AuditLogs
                 {where_clause}
                 ORDER BY AuditID {order}
                 OFFSET ? ROWS
@@ -612,7 +612,7 @@ class DashboardMixin:
             cur.execute("""
                 SELECT DISTINCT
                     a.ActionType
-                FROM BankingFraudDB.dbo.AuditLogs AS a
+                FROM dbo.AuditLogs AS a
                 WHERE a.ActionType IS NOT NULL
                 ORDER BY a.ActionType
             """)

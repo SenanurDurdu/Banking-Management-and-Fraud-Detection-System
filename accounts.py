@@ -407,184 +407,185 @@ class AccountsMixin:
     # ADMIN ONLY - UNFREEZE ACCOUNT
     # ========================================================
 
+    def unfreeze_account(self, account_id):
+        session = self.require_login()
 
-def unfreeze_account(self, account_id):
-    session = self.require_login()
+        # Validate session authorization.
 
-    # Validate session authorization.
-
-    if session.get("role") != "Admin":
-        raise PermissionError(
-            "Only bank administrators can unfreeze accounts."
-        )
-
-    # Validate administrator UserID.
-
-    try:
-        admin_user_id = int(session.get("user_id"))
-
-        if admin_user_id <= 0:
-            raise ValueError()
-
-    except (ValueError, TypeError, OverflowError):
-        raise PermissionError(
-            "Invalid administrator session."
-        )
-
-    # Validate bank account ID.
-
-    try:
-        account_id = int(account_id)
-
-        if account_id <= 0:
-            raise ValueError()
-
-    except (ValueError, TypeError, OverflowError):
-        raise ValueError(
-            "Invalid Account ID."
-        )
-
-    con = connect()
-
-    try:
-        con.autocommit = False
-
-        cur = con.cursor()
-
-        cur.execute("""
-               SET XACT_ABORT ON;
-           """)
-
-        # Verify administrator directly in the database.
-
-        admin = cur.execute(
-            """
-            SELECT UserID
-            FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
-            WHERE UserID = ?
-              AND Role = 'Admin'
-              AND IsActive = 1
-            """,
-            admin_user_id
-        ).fetchone()
-
-        if admin is None:
+        if session.get("role") != "Admin":
             raise PermissionError(
-                "Active administrator access is required."
+                "Only bank administrators can unfreeze accounts."
             )
 
-        # Lock and validate the selected account.
+        # Validate administrator UserID.
 
-        account = cur.execute(
-            """
-            SELECT
-                AccountID,
-                CustomerID,
-                IsActive,
-                IsFrozen
-            FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
-            WHERE AccountID = ?
-            """,
-            account_id
-        ).fetchone()
+        try:
+            admin_user_id = int(session.get("user_id"))
 
-        if account is None:
+            if admin_user_id <= 0:
+                raise ValueError()
+
+        except (ValueError, TypeError, OverflowError):
+            raise PermissionError(
+                "Invalid administrator session."
+            )
+
+        # Validate bank account ID.
+
+        try:
+            account_id = int(account_id)
+
+            if account_id <= 0:
+                raise ValueError()
+
+        except (ValueError, TypeError, OverflowError):
             raise ValueError(
-                "Bank account not found."
+                "Invalid Account ID."
             )
 
-        if not bool(account.IsActive):
-            raise ValueError(
-                "Inactive accounts cannot be unfrozen."
+        con = connect()
+
+        try:
+            con.autocommit = False
+
+            cur = con.cursor()
+
+            cur.execute("""
+                   SET XACT_ABORT ON;
+               """)
+
+            # Verify administrator directly in the database.
+
+            admin = cur.execute(
+                """
+                SELECT UserID
+                FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)
+                WHERE UserID = ?
+                  AND Role = 'Admin'
+                  AND IsActive = 1
+                """,
+                admin_user_id
+            ).fetchone()
+
+            if admin is None:
+                raise PermissionError(
+                    "Active administrator access is required."
+                )
+
+            # Lock and validate the selected account.
+
+            account = cur.execute(
+                """
+                SELECT
+                    AccountID,
+                    CustomerID,
+                    IsActive,
+                    IsFrozen
+                FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
+                WHERE AccountID = ?
+                """,
+                account_id
+            ).fetchone()
+
+            if account is None:
+                raise ValueError(
+                    "Bank account not found."
+                )
+
+            if not bool(account.IsActive):
+                raise ValueError(
+                    "Inactive accounts cannot be unfrozen."
+                )
+
+            if not bool(account.IsFrozen):
+                raise ValueError(
+                    "This account is not frozen."
+                )
+
+            customer_id = int(account.CustomerID)
+
+            # Unfreeze the account only when admin access
+            # remains valid.
+
+            cur.execute(
+                """
+                UPDATE dbo.Accounts
+                SET IsFrozen = 0
+                WHERE AccountID = ?
+                  AND IsActive = 1
+                  AND IsFrozen = 1
+                  AND EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.Users
+                      WHERE UserID = ?
+                        AND Role = 'Admin'
+                        AND IsActive = 1
+                  )
+                """,
+                account_id,
+                admin_user_id
             )
 
-        if not bool(account.IsFrozen):
-            raise ValueError(
-                "This account is not frozen."
+            if cur.rowcount != 1:
+                raise RuntimeError(
+                    "Account could not be unfrozen."
+                )
+
+            # Record administrator action.
+
+            cur.execute(
+                """
+                INSERT INTO dbo.AuditLogs
+                (
+                    ActionType,
+                    EntityName,
+                    EntityID,
+                    Description,
+                    UserID
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                "UNFREEZE",
+                "Account",
+                account_id,
+                "Administrator unfroze the bank account.",
+                admin_user_id
             )
 
-        customer_id = int(account.CustomerID)
+            # Notify the account owner.
 
-        # Unfreeze the account only when admin access
-        # remains valid.
-
-        cur.execute(
-            """
-            UPDATE dbo.Accounts
-            SET IsFrozen = 0
-            WHERE AccountID = ?
-              AND IsActive = 1
-              AND IsFrozen = 1
-              AND EXISTS
-              (
-                  SELECT 1
-                  FROM dbo.Users
-                  WHERE UserID = ?
-                    AND Role = 'Admin'
-                    AND IsActive = 1
-              )
-            """,
-            account_id,
-            admin_user_id
-        )
-
-        if cur.rowcount != 1:
-            raise RuntimeError(
-                "Account could not be unfrozen."
+            cur.execute(
+                """
+                INSERT INTO dbo.Notifications
+                (
+                    CustomerID,
+                    Title,
+                    Message,
+                    NotificationType,
+                    IsRead
+                )
+                VALUES (?, ?, ?, ?, 0)
+                """,
+                customer_id,
+                "Bank Account Unfrozen",
+                (
+                    "Your bank account has been unfrozen "
+                    "by a bank administrator. "
+                    "You can resume eligible banking operations."
+                ),
+                "Security"
             )
 
-        # Record administrator action.
+            con.commit()
 
-        cur.execute(
-            """
-            INSERT INTO dbo.AuditLogs
-            (
-                ActionType,
-                EntityName,
-                EntityID,
-                Description,
-                UserID
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            "UNFREEZE",
-            "Account",
-            account_id,
-            "Administrator unfroze the bank account.",
-            admin_user_id
-        )
+            return True
 
-        # Notify the account owner.
+        except Exception:
+            con.rollback()
+            raise
 
-        cur.execute(
-            """
-            INSERT INTO dbo.Notifications
-            (
-                CustomerID,
-                Title,
-                Message,
-                NotificationType,
-                IsRead
-            )
-            VALUES (?, ?, ?, ?, 0)
-            """,
-            customer_id,
-            "Bank Account Unfrozen",
-            (
-                "Your bank account has been unfrozen "
-                "by a bank administrator. "
-                "You can resume eligible banking operations."
-            ),
-            "Security"
-        )
+        finally:
+            con.close()
 
-        con.commit()
 
-        return True
-
-    except Exception:
-        con.rollback()
-        raise
-
-    finally:
-        con.close()
