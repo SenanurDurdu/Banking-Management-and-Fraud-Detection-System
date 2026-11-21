@@ -37,6 +37,153 @@ class App(ctk.CTk):
     # GENERAL UI HELPERS
     # ============================================================
 
+    def ask_yes_no(self, title, message):
+        result = {"confirmed": False}
+
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.geometry("520x430")
+        popup.minsize(520, 430)
+        popup.resizable(False, False)
+        popup.configure(fg_color="#17263F")
+
+        popup.transient(self)
+        popup.grab_set()
+
+        popup.update_idletasks()
+
+        x = self.winfo_rootx() + (
+                self.winfo_width() - 520
+        ) // 2
+
+        y = self.winfo_rooty() + (
+                self.winfo_height() - 430
+        ) // 2
+
+        popup.geometry(f"+{x}+{y}")
+
+        message_label = ctk.CTkLabel(
+            popup,
+            text=message,
+            font=("Arial", 12),
+            text_color="#FFFFFF",
+            wraplength=470,
+            justify="center"
+        )
+        message_label.pack(
+            fill="both",
+            expand=True,
+            padx=20,
+            pady=(20, 10)
+        )
+
+        button_frame = ctk.CTkFrame(
+            popup,
+            fg_color="transparent"
+        )
+        button_frame.pack(
+            side="bottom",
+            pady=(10, 25)
+        )
+
+        def close_popup(confirmed):
+            result["confirmed"] = confirmed
+            popup.destroy()
+
+        ctk.CTkButton(
+            button_frame,
+            text="Yes",
+            width=110,
+            height=36,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            command=lambda: close_popup(True)
+        ).pack(side="left", padx=8)
+
+        ctk.CTkButton(
+            button_frame,
+            text="No",
+            width=110,
+            height=36,
+            fg_color="#374151",
+            hover_color="#4B5563",
+            command=lambda: close_popup(False)
+        ).pack(side="left", padx=8)
+
+        popup.protocol(
+            "WM_DELETE_WINDOW",
+            lambda: close_popup(False)
+        )
+
+        popup.bind(
+            "<Escape>",
+            lambda event: close_popup(False)
+        )
+
+        popup.bind(
+            "<Return>",
+            lambda event: close_popup(True)
+        )
+
+        popup.after(100, popup.focus_force)
+        self.wait_window(popup)
+
+        return result["confirmed"]
+
+
+    def show_ok(self, title, message):
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.geometry("430x220")
+        popup.resizable(False, False)
+        popup.configure(fg_color="#17263F")
+
+        popup.transient(self)
+        popup.grab_set()
+        popup.update_idletasks()
+
+        x = self.winfo_rootx() + (
+            self.winfo_width() - 430
+        ) // 2
+
+        y = self.winfo_rooty() + (
+            self.winfo_height() - 220
+        ) // 2
+
+        popup.geometry(f"+{x}+{y}")
+
+        ctk.CTkLabel(
+            popup,
+            text=message,
+            font=("Arial", 12),
+            text_color="#FFFFFF",
+            wraplength=385,
+            justify="center"
+        ).pack(
+            fill="both",
+            expand=True,
+            padx=20,
+            pady=(20, 10)
+        )
+
+        ctk.CTkButton(
+            popup,
+            text="OK",
+            width=120,
+            height=36,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            command=popup.destroy
+        ).pack(pady=(0, 20))
+
+        popup.protocol("WM_DELETE_WINDOW", popup.destroy)
+        popup.bind("<Escape>", lambda event: popup.destroy())
+        popup.bind("<Return>", lambda event: popup.destroy())
+
+        popup.after(100, popup.focus_force)
+        self.wait_window(popup)
+
+
     def clear(self):
         for widget in self.winfo_children():
             widget.destroy()
@@ -45,7 +192,7 @@ class App(ctk.CTk):
         try:
             return fn()
         except Exception as error:
-            messagebox.showerror("Error", str(error))
+            self.show_ok("Error", str(error))
             return None
 
 
@@ -263,10 +410,12 @@ class App(ctk.CTk):
         # COLORS
         # ====================================================
 
-        INPUT_BG = "#35435D"
+        INPUT_BG = "#F5F7FC"
+        INPUT_TEXT = "#21385F"
+        ICON_COLOR = "#304B78"
         WHITE_TEXT = "#FFFFFF"
-        MUTED_TEXT = "#C7D3E8"
-        LINK_TEXT = "#93C5FD"
+        MUTED_TEXT = "#5F708D"
+        LINK_TEXT = "#2463E9"
 
         # ====================================================
         # FONTS
@@ -312,8 +461,8 @@ class App(ctk.CTk):
         email = tk.Entry(
             canvas,
             bg=INPUT_BG,
-            fg=WHITE_TEXT,
-            insertbackground=WHITE_TEXT,
+            fg=INPUT_TEXT,
+            insertbackground=INPUT_TEXT,
             relief="flat",
             bd=0,
             highlightthickness=0,
@@ -323,8 +472,8 @@ class App(ctk.CTk):
         password = tk.Entry(
             canvas,
             bg=INPUT_BG,
-            fg=WHITE_TEXT,
-            insertbackground=WHITE_TEXT,
+            fg=INPUT_TEXT,
+            insertbackground=INPUT_TEXT,
             relief="flat",
             bd=0,
             highlightthickness=0,
@@ -340,7 +489,7 @@ class App(ctk.CTk):
         def apply_placeholder(entry):
             if not entry.get():
                 entry.configure(
-                    fg="#B8C5DC",
+                    fg="#667795",
                     show=""
                 )
                 entry.insert(0, placeholders[entry])
@@ -349,7 +498,7 @@ class App(ctk.CTk):
             if entry.get() == placeholders[entry]:
                 entry.delete(0, "end")
 
-            entry.configure(fg=WHITE_TEXT)
+            entry.configure(fg=INPUT_TEXT)
 
             if entry is password:
                 entry.configure(
@@ -451,7 +600,7 @@ class App(ctk.CTk):
             overlay = Image.new(
                 "RGBA",
                 (width, height),
-                (5, 12, 30, 30)
+                (5, 12, 30, 12)
             )
             background = Image.alpha_composite(
                 background,
@@ -474,8 +623,31 @@ class App(ctk.CTk):
             # GLASS CARD
             # ====================================================
 
+            # Soft drop shadow and frosted white glass panel.
+            shadow_mask = Image.new("L", (width, height), 0)
+            shadow_draw = ImageDraw.Draw(shadow_mask)
+
+            shadow_draw.rounded_rectangle(
+                (left, top + px(9), right, bottom + px(9)),
+                radius=px(30),
+                fill=115
+            )
+
+            shadow_mask = shadow_mask.filter(
+                ImageFilter.GaussianBlur(px(22))
+            )
+
+            shadow = Image.new(
+                "RGBA",
+                (width, height),
+                (15, 30, 60, 0)
+            )
+            shadow.putalpha(shadow_mask)
+
+            background = Image.alpha_composite(background, shadow)
+
             blurred = background.filter(
-                ImageFilter.GaussianBlur(px(14))
+                ImageFilter.GaussianBlur(px(17))
             )
 
             mask = Image.new("L", (width, height), 0)
@@ -500,8 +672,8 @@ class App(ctk.CTk):
             glass_draw.rounded_rectangle(
                 (left, top, right, bottom),
                 radius=px(30),
-                fill=(20, 34, 58, 225),
-                outline=(185, 203, 230, 160),
+                fill=(246, 249, 255, 193),
+                outline=(255, 255, 255, 235),
                 width=max(1, px(2))
             )
 
@@ -625,7 +797,7 @@ class App(ctk.CTk):
                 (center_x, title_y),
                 "Welcome Back",
                 font=image_font(px(35), True),
-                fill=WHITE_TEXT,
+                fill="#1B3560",
                 anchor="mt"
             )
 
@@ -658,7 +830,7 @@ class App(ctk.CTk):
                     ),
                     radius=px(12),
                     fill=INPUT_BG,
-                    outline="#66748E",
+                    outline="#E0E7F2",
                     width=max(1, px(1))
                 )
 
@@ -669,7 +841,7 @@ class App(ctk.CTk):
             draw.rounded_rectangle(
                 (mx, my, mx + px(26), my + px(19)),
                 radius=px(3),
-                outline=WHITE_TEXT,
+                outline=ICON_COLOR,
                 width=max(1, px(2))
             )
 
@@ -679,7 +851,7 @@ class App(ctk.CTk):
                     (mx + px(13), my + px(11)),
                     (mx + px(26), my + px(2))
                 ],
-                fill=WHITE_TEXT,
+                fill=ICON_COLOR,
                 width=max(1, px(2))
             )
 
@@ -690,7 +862,7 @@ class App(ctk.CTk):
             draw.rounded_rectangle(
                 (lx, ly, lx + px(23), ly + px(20)),
                 radius=px(3),
-                outline=WHITE_TEXT,
+                outline=ICON_COLOR,
                 width=max(1, px(2))
             )
 
@@ -703,7 +875,7 @@ class App(ctk.CTk):
                 ),
                 start=180,
                 end=360,
-                fill=WHITE_TEXT,
+                fill=ICON_COLOR,
                 width=max(1, px(2))
             )
 
@@ -743,7 +915,7 @@ class App(ctk.CTk):
                 (center_x, register_y),
                 "Create a new account",
                 font=image_font(px(15)),
-                fill=LINK_TEXT,
+                fill="#516789",
                 anchor="mm"
             )
 
@@ -915,61 +1087,71 @@ class App(ctk.CTk):
     # REGISTRATION SCREEN
     # ============================================================
 
-
     def show_register(self):
-        card = self.auth_card(
-            "Registration",
-            "All fields are required",
-            820
+        self.clear()
+
+        image_path = (
+                Path(__file__).resolve().parent
+                / "ng_bank_landscape.png"
         )
 
-        first = self.entry(
-            card,
-            "First name"
-        )
+        if image_path.exists():
+            landscape = Image.open(image_path).convert("RGB")
+        else:
+            landscape = Image.new("RGB", (1600, 950), "#152C50")
 
-        last = self.entry(
-            card,
-            "Last name"
+        canvas = tk.Canvas(
+            self,
+            highlightthickness=0,
+            bd=0
         )
+        canvas.pack(fill="both", expand=True)
 
-        national_id = self.entry(
-            card,
-            "11-digit National ID"
-        )
+        background_ref = {"photo": None}
+        resize_job = {"id": None}
 
-        phone = self.entry(
-            card,
-            "Phone number (11 digits)"
-        )
+        # ====================================================
+        # REGISTRATION FIELDS
+        # ====================================================
 
-        email = self.entry(
-            card,
-            "Gmail address (@gmail.com)"
-        )
+        field_specs = [
+            ("First name", False),
+            ("Last name", False),
+            ("11-digit National ID", False),
+            ("Phone number (11 digits)", False),
+            ("Gmail address (@gmail.com)", False),
+            ("City (İl)", False),
+            ("District (İlçe)", False),
+            ("Password (minimum 4 characters)", True),
+            ("Confirm password", True)
+        ]
 
-        # City and district are entered manually.
-        city = self.entry(
-            card,
-            "City (İl)"
-        )
+        entries = []
 
-        district = self.entry(
-            card,
-            "District (İlçe)"
-        )
+        for placeholder, secret in field_specs:
+            entry = ctk.CTkEntry(
+                canvas,
+                placeholder_text=placeholder,
+                height=43,
+                corner_radius=11,
+                border_width=1,
+                border_color="#DCE5F2",
+                fg_color="#F5F7FC",
+                text_color="#21385F",
+                placeholder_text_color="#71819B",
+                font=("Arial", 12),
+                show="*" if secret else None
+            )
+            entries.append(entry)
 
-        password = self.entry(
-            card,
-            "Password (minimum 4 characters)",
-            secret=True
-        )
+        (
+            first, last, national_id, phone, email,
+            city, district, password, confirm
+        ) = entries
 
-        confirm = self.entry(
-            card,
-            "Confirm password",
-            secret=True
-        )
+        # ====================================================
+        # REGISTRATION ACTION - ORIGINAL LOGIC
+        # ====================================================
 
         def submit():
             def action():
@@ -1000,7 +1182,7 @@ class App(ctk.CTk):
                     password.get()
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Registration Successful",
                     "Registration Successful!"
                 )
@@ -1009,21 +1191,276 @@ class App(ctk.CTk):
 
             self.run(action)
 
-        self.button(
-            card,
-            "Register",
-            submit,
-            330
-        ).pack(pady=(8, 4))
+        register_button = ctk.CTkButton(
+            canvas,
+            text="Register",
+            command=submit,
+            height=46,
+            corner_radius=11,
+            fg_color="#2463E9",
+            hover_color="#1D4ED8",
+            text_color="#FFFFFF",
+            font=("Arial", 13, "bold")
+        )
 
-        ctk.CTkButton(
-            card,
+        back_button = ctk.CTkButton(
+            canvas,
             text="Back to Login",
             command=self.show_login,
+            height=30,
             fg_color="transparent",
-            text_color="#93C5FD"
-        ).pack(pady=3)
+            hover_color="#E2E9F5",
+            text_color="#304B78",
+            font=("Arial", 12)
+        )
 
+        # ====================================================
+        # FONT HELPER
+        # ====================================================
+
+        def image_font(size, bold=False):
+            names = (
+                ["arialbd.ttf", "segoeuib.ttf"]
+                if bold else
+                ["arial.ttf", "segoeui.ttf"]
+            )
+
+            for name in names:
+                path = Path("C:/Windows/Fonts") / name
+                if path.exists():
+                    return ImageFont.truetype(
+                        str(path),
+                        max(10, int(size))
+                    )
+
+            return ImageFont.load_default()
+
+        # ====================================================
+        # BACKGROUND AND WHITE GLASS PANEL
+        # ====================================================
+
+        def render():
+            if not canvas.winfo_exists():
+                return
+
+            width = canvas.winfo_width()
+            height = canvas.winfo_height()
+
+            if width < 2 or height < 2:
+                return
+
+            scale = min(width / 1600, height / 950)
+            scale = max(0.70, min(scale, 1.10))
+
+            def px(value):
+                return max(1, round(value * scale))
+
+            background = ImageOps.fit(
+                landscape,
+                (width, height),
+                method=Image.Resampling.LANCZOS
+            ).convert("RGBA")
+
+            overlay = Image.new(
+                "RGBA",
+                (width, height),
+                (5, 12, 30, 12)
+            )
+            background = Image.alpha_composite(
+                background, overlay
+            )
+
+            center_x = width // 2
+            center_y = height // 2
+
+            card_w = min(px(540), width - 40)
+            card_h = min(px(850), height - 25)
+
+            left = center_x - card_w // 2
+            right = center_x + card_w // 2
+            top = center_y - card_h // 2
+            bottom = center_y + card_h // 2
+
+            # Soft shadow
+            shadow_mask = Image.new(
+                "L", (width, height), 0
+            )
+            shadow_draw = ImageDraw.Draw(shadow_mask)
+
+            shadow_draw.rounded_rectangle(
+                (
+                    left,
+                    top + px(7),
+                    right,
+                    bottom + px(7)
+                ),
+                radius=px(28),
+                fill=100
+            )
+
+            shadow_mask = shadow_mask.filter(
+                ImageFilter.GaussianBlur(px(20))
+            )
+
+            shadow = Image.new(
+                "RGBA",
+                (width, height),
+                (15, 30, 60, 0)
+            )
+            shadow.putalpha(shadow_mask)
+
+            background = Image.alpha_composite(
+                background, shadow
+            )
+
+            # Blur only the panel background
+            blurred = background.filter(
+                ImageFilter.GaussianBlur(px(17))
+            )
+
+            mask = Image.new("L", (width, height), 0)
+            mask_draw = ImageDraw.Draw(mask)
+
+            mask_draw.rounded_rectangle(
+                (left, top, right, bottom),
+                radius=px(28),
+                fill=255
+            )
+
+            background.paste(blurred, (0, 0), mask)
+
+            # White translucent glass
+            glass = Image.new(
+                "RGBA",
+                (width, height),
+                (0, 0, 0, 0)
+            )
+
+            glass_draw = ImageDraw.Draw(glass)
+            glass_draw.rounded_rectangle(
+                (left, top, right, bottom),
+                radius=px(28),
+                fill=(246, 249, 255, 193),
+                outline=(255, 255, 255, 235),
+                width=max(1, px(2))
+            )
+
+            background = Image.alpha_composite(
+                background, glass
+            )
+
+            draw = ImageDraw.Draw(background)
+
+            # ====================================================
+            # TITLE
+            # ====================================================
+
+            draw.text(
+                (center_x, top + px(24)),
+                "NG BANK",
+                font=image_font(px(20), True),
+                fill="#2463E9",
+                anchor="mt"
+            )
+
+            draw.text(
+                (center_x, top + px(62)),
+                "Create Your Account",
+                font=image_font(px(28), True),
+                fill="#1B3560",
+                anchor="mt"
+            )
+
+            draw.text(
+                (center_x, top + px(109)),
+                "All fields are required",
+                font=image_font(px(14)),
+                fill="#5F708D",
+                anchor="mt"
+            )
+
+            # ====================================================
+            # DRAW BACKGROUND
+            # ====================================================
+
+            photo = ImageTk.PhotoImage(
+                background.convert("RGB")
+            )
+
+            background_ref["photo"] = photo
+
+            canvas.delete("all")
+            canvas.create_image(
+                0, 0,
+                image=photo,
+                anchor="nw"
+            )
+
+            # ====================================================
+            # PLACE FORM WIDGETS
+            # ====================================================
+
+            field_width = card_w - px(90)
+            field_height = px(43)
+            field_gap = px(10)
+            first_y = top + px(155)
+
+            for index, entry in enumerate(entries):
+                y = first_y + index * (
+                        field_height + field_gap
+                )
+
+                canvas.create_window(
+                    center_x,
+                    y,
+                    window=entry,
+                    width=field_width,
+                    height=field_height,
+                    anchor="n"
+                )
+
+            button_y = (
+                    first_y
+                    + len(entries) * (field_height + field_gap)
+                    + px(6)
+            )
+
+            canvas.create_window(
+                center_x,
+                button_y,
+                window=register_button,
+                width=field_width,
+                height=px(46),
+                anchor="n"
+            )
+
+            canvas.create_window(
+                center_x,
+                button_y + px(55),
+                window=back_button,
+                width=px(180),
+                height=px(30),
+                anchor="n"
+            )
+
+        # ====================================================
+        # RESIZE HANDLING
+        # ====================================================
+
+        def delayed_render():
+            resize_job["id"] = None
+            render()
+
+        def schedule_render(event=None):
+            if resize_job["id"] is not None:
+                canvas.after_cancel(resize_job["id"])
+
+            resize_job["id"] = canvas.after(
+                150, delayed_render
+            )
+
+        canvas.bind("<Configure>", schedule_render)
+        canvas.after(100, render)
 
     # ============================================================
     # MAIN PANEL AND SIDEBAR
@@ -2250,62 +2687,587 @@ class App(ctk.CTk):
     # ============================================================
     # CUSTOMERS SCREEN
     # ============================================================
-
     def show_customers(self):
-        self.db.require_admin()
+        # ====================================================
+        # ADMIN CUSTOMER MANAGEMENT - PREMIUM DESIGN
+        # ====================================================
 
-        page = self.page(
-            "Customer Management"
+        self.db.require_admin()
+        page = self.page("Customer Management")
+
+        colors = {
+            "panel": "#17263F",
+            "header": "#243A59",
+            "border": "#2B4161",
+            "text": "#F5F8FF",
+            "muted": "#9EB2D0",
+            "blue": "#3478F6",
+            "green": "#4ADE80",
+            "red": "#FCA5A5"
+        }
+
+        # ====================================================
+        # LOAD CUSTOMERS
+        # ====================================================
+
+        rows = self.run(self.db.customers)
+
+        if rows is None:
+            rows = []
+
+        # Original column order:
+        # ID, First Name, Last Name, National ID,
+        # Phone, Email, Address, Active
+
+        def is_active(value):
+            if isinstance(value, str):
+                return value.strip().lower() in (
+                    "true", "1", "yes"
+                )
+            return bool(value)
+
+        total_customers = len(rows)
+        active_customers = sum(
+            1 for row in rows if is_active(row[7])
+        )
+
+        # ====================================================
+        # OVERVIEW HEADER
+        # ====================================================
+
+        overview = ctk.CTkFrame(
+            page,
+            fg_color="transparent"
+        )
+        overview.pack(
+            fill="x",
+            padx=27,
+            pady=(5, 12)
         )
 
         ctk.CTkLabel(
-            page,
-            text="Registered Customers (View Only)",
-            font=("Arial", 17, "bold"),
-            text_color=WHITE
+            overview,
+            text="Customer Overview",
+            font=("Arial", 19, "bold"),
+            text_color=colors["text"],
+            anchor="w"
         ).pack(
-            anchor="w",
-            padx=20,
-            pady=(5, 10)
+            fill="x",
+            pady=(0, 12)
         )
 
-        tree = self.table(
-            page,
+        # ====================================================
+        # CUSTOMER STATISTICS
+        # ====================================================
+
+        metrics = ctk.CTkFrame(
+            overview,
+            fg_color="transparent"
+        )
+        metrics.pack(fill="x")
+
+        for column in range(3):
+            metrics.grid_columnconfigure(
+                column,
+                weight=1,
+                uniform="customer_metrics"
+            )
+
+        metric_items = (
             (
-                "id",
-                "first",
-                "last",
-                "nid",
-                "phone",
-                "email",
-                "address",
-                "active"
+                "TOTAL CUSTOMERS",
+                str(total_customers),
+                "#93C5FD"
             ),
             (
-                "ID",
-                "First Name",
-                "Last Name",
-                "National ID",
-                "Phone",
-                "Email",
-                "Address",
-                "Active"
+                "ACTIVE CUSTOMERS",
+                str(active_customers),
+                colors["green"]
+            ),
+            (
+                "INACTIVE CUSTOMERS",
+                str(total_customers - active_customers),
+                colors["red"]
             )
         )
 
-        self.refresh_table(
-            tree,
-            self.db.customers
-        )
+        metric_labels = []
 
-        self.button(
+        for index, (title, value, value_color) in enumerate(
+            metric_items
+        ):
+            card = ctk.CTkFrame(
+                metrics,
+                fg_color=colors["panel"],
+                corner_radius=16,
+                border_width=1,
+                border_color=colors["border"]
+            )
+
+            card.grid(
+                row=0,
+                column=index,
+                sticky="nsew",
+                padx=5
+            )
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=("Arial", 11, "bold"),
+                text_color=colors["muted"],
+                anchor="w"
+            ).pack(
+                fill="x",
+                padx=20,
+                pady=(18, 7)
+            )
+
+            value_label = ctk.CTkLabel(
+                card,
+                text=value,
+                font=("Arial", 27, "bold"),
+                text_color=value_color,
+                anchor="w"
+            )
+            value_label.pack(
+                fill="x",
+                padx=20,
+                pady=(0, 18)
+            )
+
+            metric_labels.append(value_label)
+
+        # ====================================================
+        # CUSTOMER DIRECTORY TOOLBAR
+        # ====================================================
+
+        toolbar = ctk.CTkFrame(
             page,
-            "Refresh",
-            lambda: self.refresh_table(
-                tree,
-                self.db.customers
+            fg_color="transparent"
+        )
+        toolbar.pack(
+            fill="x",
+            padx=32,
+            pady=(8, 13)
+        )
+
+        title_area = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent"
+        )
+        title_area.pack(side="left")
+
+        ctk.CTkLabel(
+            title_area,
+            text="Registered Customers",
+            font=("Arial", 18, "bold"),
+            text_color=colors["text"],
+            anchor="w"
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            title_area,
+            text="View Only  |  Customer Directory",
+            font=("Arial", 11),
+            text_color=colors["muted"],
+            anchor="w"
+        ).pack(
+            anchor="w",
+            pady=(5, 0)
+        )
+
+        # ====================================================
+        # DARK CUSTOMER TABLE CONTAINER
+        # ====================================================
+
+        table_holder = ctk.CTkFrame(
+            page,
+            fg_color=colors["panel"],
+            corner_radius=16,
+            border_width=1,
+            border_color=colors["border"]
+        )
+        table_holder.pack(
+            fill="both",
+            expand=True,
+            padx=27,
+            pady=(0, 16)
+        )
+
+        table_area = ctk.CTkFrame(
+            table_holder,
+            fg_color=colors["panel"]
+        )
+        table_area.pack(
+            fill="both",
+            expand=True,
+            padx=12,
+            pady=12
+        )
+
+        # ====================================================
+        # WINDOWS DARK TREEVIEW THEME
+        # ====================================================
+
+        style = ttk.Style()
+        previous_theme = style.theme_use()
+
+        # The clam theme supports custom Treeview colors
+        # more reliably on Windows.
+        if previous_theme != "clam":
+            style.theme_use("clam")
+
+        def restore_theme(event):
+            if event.widget is table_holder:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        table_holder.bind(
+            "<Destroy>",
+            restore_theme,
+            add="+"
+        )
+
+        # Dedicated style: does not modify Bank.Treeview.
+
+        style.configure(
+            "AdminCustomers.Treeview",
+            background=colors["panel"],
+            fieldbackground=colors["panel"],
+            foreground=colors["text"],
+            rowheight=43,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.configure(
+            "AdminCustomers.Treeview.Heading",
+            background=colors["header"],
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(12, 13),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.map(
+            "AdminCustomers.Treeview",
+            background=[
+                ("selected", colors["blue"])
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        style.map(
+            "AdminCustomers.Treeview.Heading",
+            background=[
+                ("active", "#2D4669"),
+                ("pressed", colors["header"])
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        # ====================================================
+        # DARK SCROLLBARS
+        # ====================================================
+
+        style.configure(
+            "AdminCustomers.Vertical.TScrollbar",
+            background="#304B70",
+            troughcolor="#111F35",
+            arrowcolor="#FFFFFF",
+            bordercolor="#17263F",
+            lightcolor="#304B70",
+            darkcolor="#304B70",
+            gripcount=0,
+            borderwidth=0,
+            relief="flat",
+            width=13
+        )
+
+        style.map(
+            "AdminCustomers.Vertical.TScrollbar",
+            background=[
+                ("active", "#456B9B"),
+                ("pressed", "#3478F6")
+            ]
+        )
+
+        style.configure(
+            "AdminCustomers.Horizontal.TScrollbar",
+            background="#304B70",
+            troughcolor="#111F35",
+            arrowcolor="#FFFFFF",
+            bordercolor="#17263F",
+            lightcolor="#304B70",
+            darkcolor="#304B70",
+            gripcount=0,
+            borderwidth=0,
+            relief="flat",
+            width=13
+        )
+
+        style.map(
+            "AdminCustomers.Horizontal.TScrollbar",
+            background=[
+                ("active", "#456B9B"),
+                ("pressed", "#3478F6")
+            ]
+        )
+
+        # ====================================================
+        # CUSTOMER TABLE - ALL ORIGINAL COLUMNS
+        # ====================================================
+
+        columns = (
+            "id",
+            "first",
+            "last",
+            "nid",
+            "phone",
+            "email",
+            "address",
+            "active"
+        )
+
+        tree = ttk.Treeview(
+            table_area,
+            columns=columns,
+            show="headings",
+            style="AdminCustomers.Treeview",
+            selectmode="browse"
+        )
+
+        column_specs = (
+            ("id", "ID", 65),
+            ("first", "First Name", 140),
+            ("last", "Last Name", 140),
+            ("nid", "National ID", 155),
+            ("phone", "Phone", 155),
+            ("email", "Email", 240),
+            ("address", "Address", 240),
+            ("active", "Active", 110)
+        )
+
+
+        for key, heading, width in column_specs:
+            tree.heading(
+                key,
+                text=heading
             )
-        ).pack(pady=8)
+
+            tree.column(
+                key,
+                width=width,
+                minwidth=70,
+                anchor=(
+                    "w"
+                    if key in (
+                        "first", "last", "email", "address"
+                    )
+                    else "center"
+                ),
+                stretch=True
+            )
+
+        # ====================================================
+        # SCROLLBARS
+        # ====================================================
+
+        yscroll = ttk.Scrollbar(
+            table_area,
+            orient="vertical",
+            command=tree.yview,
+            style="AdminCustomers.Vertical.TScrollbar"
+        )
+
+        xscroll = ttk.Scrollbar(
+            table_area,
+            orient="horizontal",
+            command=tree.xview,
+            style="AdminCustomers.Horizontal.TScrollbar"
+        )
+
+        tree.configure(
+            yscrollcommand=yscroll.set,
+            xscrollcommand=xscroll.set
+        )
+
+        yscroll.pack(
+            side="right",
+            fill="y"
+        )
+
+        xscroll.pack(
+            side="bottom",
+            fill="x"
+        )
+
+        tree.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+        # ====================================================
+        # CUSTOMER STATUS AND ROW COLORS
+        # ====================================================
+
+        tree.tag_configure(
+            "active_even",
+            background="#17263F",
+            foreground="#F5F8FF"
+        )
+
+        tree.tag_configure(
+            "active_odd",
+            background="#1C2D48",
+            foreground="#F5F8FF"
+        )
+
+        tree.tag_configure(
+            "inactive_even",
+            background="#17263F",
+            foreground="#FCA5A5"
+        )
+
+        tree.tag_configure(
+            "inactive_odd",
+            background="#1C2D48",
+            foreground="#FCA5A5"
+        )
+
+        # ====================================================
+        # POPULATE CUSTOMER TABLE
+        # ====================================================
+
+        def populate_customers(customer_rows):
+            tree.delete(*tree.get_children())
+
+            for index, row in enumerate(customer_rows):
+                active = is_active(row[7])
+
+                status = "Active" if active else "Inactive"
+
+                tag = (
+                    ("active_" if active else "inactive_")
+                    + ("even" if index % 2 == 0 else "odd")
+                )
+
+                tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        "" if row[0] is None else str(row[0]),
+                        "" if row[1] is None else str(row[1]),
+                        "" if row[2] is None else str(row[2]),
+                        "" if row[3] is None else str(row[3]),
+                        "" if row[4] is None else str(row[4]),
+                        "" if row[5] is None else str(row[5]),
+                        "" if row[6] is None else str(row[6]),
+                        status
+                    ),
+                    tags=(tag,)
+                )
+
+        populate_customers(rows)
+
+        # ====================================================
+        # EMPTY CUSTOMER STATE
+        # ====================================================
+
+        empty_state = ctk.CTkFrame(
+            table_holder,
+            width=420,
+            height=180,
+            fg_color=colors["panel"],
+            corner_radius=14,
+            border_width=1,
+            border_color=colors["border"]
+        )
+        empty_state.pack_propagate(False)
+
+        ctk.CTkLabel(
+            empty_state,
+            text="No customers found",
+            font=("Arial", 21, "bold"),
+            text_color=colors["text"]
+        ).pack(
+            pady=(48, 10)
+        )
+
+        ctk.CTkLabel(
+            empty_state,
+            text="Registered customers will appear here.",
+            font=("Arial", 12),
+            text_color=colors["muted"]
+        ).pack()
+
+        def update_empty_state(customer_rows):
+            if customer_rows:
+                empty_state.place_forget()
+            else:
+                empty_state.place(
+                    relx=0.5,
+                    rely=0.53,
+                    anchor="center"
+                )
+
+        update_empty_state(rows)
+
+        # ====================================================
+        # REFRESH - ORIGINAL DATABASE FUNCTION PRESERVED
+        # ====================================================
+
+        def refresh_customers():
+            updated_rows = self.run(self.db.customers)
+
+            if updated_rows is None:
+                return
+
+            populate_customers(updated_rows)
+            update_empty_state(updated_rows)
+
+            updated_total = len(updated_rows)
+            updated_active = sum(
+                1 for row in updated_rows
+                if is_active(row[7])
+            )
+
+            metric_labels[0].configure(
+                text=str(updated_total)
+            )
+
+            metric_labels[1].configure(
+                text=str(updated_active)
+            )
+
+            metric_labels[2].configure(
+                text=str(updated_total - updated_active)
+            )
+
+        ctk.CTkButton(
+            toolbar,
+            text="Refresh",
+            command=refresh_customers,
+            width=130,
+            height=43,
+            corner_radius=11,
+            fg_color=colors["blue"],
+            hover_color=BLUE_HOVER,
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold")
+        ).pack(
+            side="right"
+        )
 
     # ============================================================
     # ACCOUNT TYPE SELECTION
@@ -2482,7 +3444,7 @@ class App(ctk.CTk):
 
         def create_bank_account():
             def action():
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Account Creation",
                     "Do you want to create a new bank account?"
                 )
@@ -2494,7 +3456,7 @@ class App(ctk.CTk):
                     session["customer_id"]
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Account Created",
                     (
                         "Your bank account was created successfully.\n"
@@ -2614,7 +3576,7 @@ class App(ctk.CTk):
                 selected_type = card_type.get()
                 selected_limit = credit_limit.get()
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Application",
                     (
                         f"Card Type: {selected_type}\n"
@@ -2634,7 +3596,7 @@ class App(ctk.CTk):
                     )
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Application Submitted",
                     (
                         "Application submitted successfully.\n"
@@ -2663,13 +3625,12 @@ class App(ctk.CTk):
     # ADMIN: CREDIT CARD APPLICATIONS
     # ============================================================
 
+
     def show_admin_credit_card_applications(self):
         session = self.db.require_login()
 
         if session["role"] != "Admin":
-            raise PermissionError(
-                "Admin access required."
-            )
+            raise PermissionError("Admin access required.")
 
         page = self.page("Credit Card Applications")
 
@@ -2700,17 +3661,135 @@ class App(ctk.CTk):
             "Applied At"
         )
 
+        # ====================================================
+        # DARK TABLE THEME
+        # ====================================================
+
+        style = ttk.Style()
+        previous_theme = style.theme_use()
+
+        if previous_theme != "clam":
+            style.theme_use("clam")
+
+        style.configure(
+            "CreditApplications.Treeview",
+            background="#17263F",
+            fieldbackground="#17263F",
+            foreground="#F5F8FF",
+            rowheight=36,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.configure(
+            "CreditApplications.Treeview.Heading",
+            background="#243A59",
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(10, 9),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.map(
+            "CreditApplications.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        style.map(
+            "CreditApplications.Treeview.Heading",
+            background=[
+                ("active", "#304B70")
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"CreditApplications.{orientation}.TScrollbar"
+            )
+
+            style.configure(
+                scrollbar_style,
+                background="#304B70",
+                troughcolor="#111F35",
+                arrowcolor="#FFFFFF",
+                bordercolor="#17263F",
+                lightcolor="#304B70",
+                darkcolor="#304B70",
+                borderwidth=0,
+                relief="flat",
+                width=13
+            )
+
+            style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#456B9B"),
+                    ("pressed", "#3478F6")
+                ]
+            )
+
+        # ====================================================
+        # APPLICATION TABLE
+        # ====================================================
+
         tree = self.table(
             page,
             columns,
             headings
         )
 
+        tree.configure(
+            style="CreditApplications.Treeview"
+        )
+
+        # The shared table helper places both scrollbars
+        # inside the same frame as the Treeview.
+        table_frame = tree.master
+
+        for widget in table_frame.winfo_children():
+            if isinstance(widget, ttk.Scrollbar):
+                orientation = str(widget.cget("orient"))
+
+                widget.configure(
+                    style=(
+                        "CreditApplications.Vertical.TScrollbar"
+                        if orientation == "vertical"
+                        else "CreditApplications.Horizontal.TScrollbar"
+                    )
+                )
+
+        # Restore the previous ttk theme when leaving
+        # the Credit Card Applications page.
+        # The shared page container is self.main, so use
+        # the table widget's destruction as the trigger.
+
+        def restore_credit_applications_theme(event):
+            if event.widget is tree:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        tree.bind(
+            "<Destroy>",
+            restore_credit_applications_theme,
+            add="+"
+        )
+
         application_map = {}
 
         for row in rows:
             application_id = int(row[0])
-
             application_map[application_id] = row
 
             tree.insert(
@@ -2728,7 +3807,7 @@ class App(ctk.CTk):
             )
 
         # ====================================================
-        # REVIEW FORM
+        # REVIEW FORM - ORIGINAL FUNCTIONALITY
         # ====================================================
 
         form = ctk.CTkFrame(
@@ -2809,26 +3888,13 @@ class App(ctk.CTk):
         # UPDATE ACCOUNT COMBOBOX
         # ====================================================
 
-        def set_account_options(
-            values,
-            enabled=False
-        ):
-            account_combo.configure(
-                state="normal"
-            )
-
-            account_combo.configure(
-                values=values
-            )
-
+        def set_account_options(values, enabled=False):
+            account_combo.configure(state="normal")
+            account_combo.configure(values=values)
             account_combo.set(values[0])
 
             account_combo.configure(
-                state=(
-                    "readonly"
-                    if enabled
-                    else "disabled"
-                )
+                state="readonly" if enabled else "disabled"
             )
 
         # ====================================================
@@ -2842,37 +3908,21 @@ class App(ctk.CTk):
 
                 account_map = {}
 
-                approve_button.configure(
-                    state="disabled"
-                )
+                approve_button.configure(state="disabled")
+                reject_button.configure(state="disabled")
 
-                reject_button.configure(
-                    state="disabled"
-                )
-
-                reason_entry.configure(
-                    state="normal"
-                )
-
+                reason_entry.configure(state="normal")
                 reason_entry.delete(0, "end")
-
-                reason_entry.configure(
-                    state="disabled"
-                )
+                reason_entry.configure(state="disabled")
 
                 set_account_options(
                     ["Select an application"]
                 )
 
                 if not tree.selection():
-
                     details.configure(
-                        text=(
-                            "Select an application "
-                            "from the table."
-                        )
+                        text="Select an application from the table."
                     )
-
                     return
 
                 application_id, row = get_selected()
@@ -2896,7 +3946,6 @@ class App(ctk.CTk):
                 # ============================================
 
                 if status == "Pending":
-
                     accounts = (
                         self.db.admin_credit_card_accounts(
                             customer_id
@@ -2904,7 +3953,6 @@ class App(ctk.CTk):
                     )
 
                     for account in accounts:
-
                         account_id = int(account[0])
 
                         account_number = str(
@@ -2921,7 +3969,6 @@ class App(ctk.CTk):
                     labels = list(account_map.keys())
 
                     if labels:
-
                         set_account_options(
                             labels,
                             enabled=True
@@ -2930,9 +3977,7 @@ class App(ctk.CTk):
                         approve_button.configure(
                             state="normal"
                         )
-
                     else:
-
                         set_account_options(
                             ["No eligible bank accounts"]
                         )
@@ -2950,7 +3995,6 @@ class App(ctk.CTk):
                 # ============================================
 
                 elif status == "Approved":
-
                     account = (
                         self.db.admin_credit_card_linked_account(
                             application_id
@@ -2958,7 +4002,6 @@ class App(ctk.CTk):
                     )
 
                     if account is not None:
-
                         account_id = int(account[0])
 
                         account_number = str(
@@ -2970,10 +4013,8 @@ class App(ctk.CTk):
 
                         if not is_active:
                             account_status = "Inactive"
-
                         elif is_frozen:
                             account_status = "Frozen"
-
                         else:
                             account_status = "Active"
 
@@ -2982,9 +4023,7 @@ class App(ctk.CTk):
                             f"(ID: {account_id})"
                         )
 
-                        set_account_options(
-                            [label]
-                        )
+                        set_account_options([label])
 
                         details.configure(
                             text=(
@@ -2998,9 +4037,7 @@ class App(ctk.CTk):
                                 f"Review Note: {row[6] or '-'}"
                             )
                         )
-
                     else:
-
                         set_account_options(
                             ["Linked account not found"]
                         )
@@ -3010,7 +4047,6 @@ class App(ctk.CTk):
                 # ============================================
 
                 elif status == "Rejected":
-
                     set_account_options(
                         ["Not applicable"]
                     )
@@ -3020,7 +4056,6 @@ class App(ctk.CTk):
                 # ============================================
 
                 else:
-
                     set_account_options(
                         ["Unknown application status"]
                     )
@@ -3034,7 +4069,6 @@ class App(ctk.CTk):
         def approve():
 
             def action():
-
                 application_id, row = get_selected()
 
                 if str(row[4]).strip() != "Pending":
@@ -3049,7 +4083,7 @@ class App(ctk.CTk):
                         "Select an eligible bank account."
                     )
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Approval",
                     (
                         f"Application ID: {application_id}\n"
@@ -3071,7 +4105,7 @@ class App(ctk.CTk):
                     )
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Application Approved",
                     (
                         "Application approved successfully.\n"
@@ -3090,7 +4124,6 @@ class App(ctk.CTk):
         def reject():
 
             def action():
-
                 application_id, row = get_selected()
 
                 if str(row[4]).strip() != "Pending":
@@ -3111,7 +4144,7 @@ class App(ctk.CTk):
                         "500 characters."
                     )
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Rejection",
                     (
                         f"Application ID: {application_id}\n\n"
@@ -3127,7 +4160,7 @@ class App(ctk.CTk):
                     reason
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Application Rejected",
                     "Application rejected successfully."
                 )
@@ -3199,6 +4232,7 @@ class App(ctk.CTk):
             "<<TreeviewSelect>>",
             on_select
         )
+
 
     # ============================================================
     # CUSTOMER: MY CREDIT CARDS
@@ -3756,7 +4790,7 @@ class App(ctk.CTk):
                 # CONFIRM TRANSACTION
                 # ============================================
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Transaction",
                     (
                         f"Operation: {operation_title}\n"
@@ -3774,16 +4808,44 @@ class App(ctk.CTk):
                 # CALL BACKEND
                 # ============================================
 
-                transaction_id = (
-                    self.db.credit_card_transact(
-                        kind,
-                        card_id,
-                        amount,
-                        description
-                    )
-                )
 
-                messagebox.showinfo(
+                try:
+                    transaction_id = (
+                        self.db.credit_card_transact(
+                            kind,
+                            card_id,
+                            amount,
+                            description
+                        )
+                    )
+
+                except Exception as error:
+                    error_text = str(error).lower()
+
+                    if (
+                        kind == "Payment"
+                        and (
+                            "51118" in error_text
+                            or "insufficient bank account balance"
+                            in error_text
+                        )
+                    ):
+                        self.show_ok(
+                            "Insufficient Balance",
+                            (
+                                "Your linked bank account does not "
+                                "have sufficient funds to complete "
+                                "this credit card payment.\n\n"
+                                "Please check your account balance "
+                                "and try again."
+                            )
+                        )
+                        return
+
+                    raise
+
+
+                self.show_ok(
                     "Transaction Successful",
                     (
                         f"{operation_title} completed "
@@ -4140,11 +5202,6 @@ class App(ctk.CTk):
         refresh_history()
 
     # ============================================================
-    # ACCOUNTS SCREEN
-    # ============================================================
-
-
-    # ============================================================
     # ACCOUNT MANAGEMENT - ADMIN / CUSTOMER
     # ============================================================
 
@@ -4196,41 +5253,170 @@ class App(ctk.CTk):
         # ADMIN ACCOUNT MANAGEMENT
         # ====================================================
 
+
         if is_admin:
-            search_frame = ctk.CTkFrame(
-                page,
-                fg_color=CARD,
-                corner_radius=14
+            # ====================================================
+            # ADMIN ACCOUNT MANAGEMENT - PREMIUM DARK DESIGN
+            # ====================================================
+
+            colors = {
+                "panel": "#17263F",
+                "header": "#243A59",
+                "border": "#2B4161",
+                "text": "#F5F8FF",
+                "muted": "#9EB2D0",
+                "blue": "#3478F6",
+                "green": "#4ADE80",
+                "red": "#FCA5A5",
+                "amber": "#FBBF24"
+            }
+
+            # ====================================================
+            # ACCOUNT OVERVIEW
+            # ====================================================
+
+            total_count = len(rows)
+            active_count = sum(
+                1 for row in rows
+                if account_status(row[6], row[7]) == "Active"
+            )
+            frozen_count = sum(
+                1 for row in rows
+                if account_status(row[6], row[7]) == "Frozen"
             )
 
+            overview = ctk.CTkFrame(
+                page,
+                fg_color="transparent"
+            )
+            overview.pack(
+                fill="x",
+                padx=27,
+                pady=(4, 12)
+            )
+
+            ctk.CTkLabel(
+                overview,
+                text="Account Overview",
+                font=("Arial", 19, "bold"),
+                text_color=colors["text"],
+                anchor="w"
+            ).pack(
+                fill="x",
+                pady=(0, 12)
+            )
+
+            metrics = ctk.CTkFrame(
+                overview,
+                fg_color="transparent"
+            )
+            metrics.pack(fill="x")
+
+            for column in range(3):
+                metrics.grid_columnconfigure(
+                    column,
+                    weight=1,
+                    uniform="admin_account_metrics"
+                )
+
+            metric_items = (
+                (
+                    "TOTAL ACCOUNTS",
+                    total_count,
+                    "#93C5FD"
+                ),
+                (
+                    "ACTIVE ACCOUNTS",
+                    active_count,
+                    colors["green"]
+                ),
+                (
+                    "FROZEN ACCOUNTS",
+                    frozen_count,
+                    colors["amber"]
+                )
+            )
+
+            for index, (title, value, color) in enumerate(
+                metric_items
+            ):
+                card = ctk.CTkFrame(
+                    metrics,
+                    fg_color=colors["panel"],
+                    corner_radius=16,
+                    border_width=1,
+                    border_color=colors["border"]
+                )
+                card.grid(
+                    row=0,
+                    column=index,
+                    sticky="nsew",
+                    padx=5
+                )
+
+                ctk.CTkLabel(
+                    card,
+                    text=title,
+                    font=("Arial", 11, "bold"),
+                    text_color=colors["muted"],
+                    anchor="w"
+                ).pack(
+                    fill="x",
+                    padx=20,
+                    pady=(17, 7)
+                )
+
+                ctk.CTkLabel(
+                    card,
+                    text=str(value),
+                    font=("Arial", 27, "bold"),
+                    text_color=color,
+                    anchor="w"
+                ).pack(
+                    fill="x",
+                    padx=20,
+                    pady=(0, 18)
+                )
+
+            # ====================================================
+            # ACCOUNT SEARCH
+            # ====================================================
+
+            search_frame = ctk.CTkFrame(
+                page,
+                fg_color=colors["panel"],
+                corner_radius=15,
+                border_width=1,
+                border_color=colors["border"]
+            )
             search_frame.pack(
                 fill="x",
-                padx=22,
-                pady=(8, 14)
+                padx=32,
+                pady=(0, 13)
             )
 
             ctk.CTkLabel(
                 search_frame,
                 text="Account Search",
-                font=("Arial", 18, "bold"),
-                text_color=WHITE,
+                font=("Arial", 16, "bold"),
+                text_color=colors["text"],
                 anchor="w"
             ).pack(
                 fill="x",
                 padx=20,
-                pady=(18, 5)
+                pady=(15, 5)
             )
 
             ctk.CTkLabel(
                 search_frame,
                 text="Filter bank accounts by customer name",
-                font=("Arial", 12),
-                text_color=MUTED,
+                font=("Arial", 11),
+                text_color=colors["muted"],
                 anchor="w"
             ).pack(
                 fill="x",
                 padx=20,
-                pady=(0, 12)
+                pady=(0, 10)
             )
 
             customer_names = sorted({
@@ -4241,47 +5427,330 @@ class App(ctk.CTk):
             customer_combo = ctk.CTkComboBox(
                 search_frame,
                 values=["All Customers"] + customer_names,
-                width=350,
-                height=40,
+                width=370,
+                height=39,
                 corner_radius=9,
                 font=("Arial", 12),
-                state="readonly"
+                state="readonly",
+                fg_color=colors["header"],
+                border_color=colors["border"],
+                button_color="#304B70",
+                button_hover_color="#456B9B",
+                text_color=colors["text"],
+                dropdown_fg_color=colors["header"],
+                dropdown_text_color=colors["text"],
+                dropdown_hover_color="#304B70"
             )
-
             customer_combo.pack(
                 anchor="w",
                 padx=20,
-                pady=(0, 20)
+                pady=(0, 16)
             )
-
             customer_combo.set("All Customers")
 
-            tree = self.table(
+            # ====================================================
+            # TABLE TOOLBAR
+            # ====================================================
+
+            toolbar = ctk.CTkFrame(
                 page,
-                (
-                    "id",
-                    "number",
-                    "customer",
-                    "balance",
-                    "currency",
-                    "status"
-                ),
-                (
-                    "Account ID",
-                    "Account Number",
-                    "Customer Name",
-                    "Balance",
-                    "Currency",
-                    "Status"
-                )
+                fg_color="transparent"
+            )
+            toolbar.pack(
+                fill="x",
+                padx=32,
+                pady=(2, 10)
             )
 
-            configure_status_colors(tree)
+            title_area = ctk.CTkFrame(
+                toolbar,
+                fg_color="transparent"
+            )
+            title_area.pack(side="left")
+
+            ctk.CTkLabel(
+                title_area,
+                text="Registered Bank Accounts",
+                font=("Arial", 17, "bold"),
+                text_color=colors["text"],
+                anchor="w"
+            ).pack(anchor="w")
+
+            ctk.CTkLabel(
+                title_area,
+                text="Select an account to manage security restrictions",
+                font=("Arial", 11),
+                text_color=colors["muted"],
+                anchor="w"
+            ).pack(
+                anchor="w",
+                pady=(4, 0)
+            )
+
+            ctk.CTkButton(
+                toolbar,
+                text="Refresh",
+                command=lambda: self.run(self.show_accounts),
+                width=125,
+                height=40,
+                corner_radius=10,
+                fg_color=colors["blue"],
+                hover_color=BLUE_HOVER,
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
+            ).pack(side="right")
+
+            # ====================================================
+            # DARK TABLE CONTAINER
+            # ====================================================
+            # ====================================================
+            # ACCOUNT ACTION BUTTONS - ABOVE TABLE
+            # ====================================================
+
+            action_frame = ctk.CTkFrame(
+                page,
+                fg_color="transparent"
+            )
+            action_frame.pack(
+                fill="x",
+                padx=32,
+                pady=(0, 12)
+            )
+            table_holder = ctk.CTkFrame(
+                page,
+                fg_color=colors["panel"],
+                corner_radius=15,
+                border_width=1,
+                border_color=colors["border"]
+            )
+            table_holder.pack(
+                fill="both",
+                expand=True,
+                padx=27,
+                pady=(0, 12)
+            )
+
+            table_area = ctk.CTkFrame(
+                table_holder,
+                fg_color=colors["panel"]
+            )
+            table_area.pack(
+                fill="both",
+                expand=True,
+                padx=12,
+                pady=12
+            )
+
+            # ====================================================
+            # DARK TREEVIEW STYLE
+            # ====================================================
+
+            style = ttk.Style()
+            previous_theme = style.theme_use()
+
+            if previous_theme != "clam":
+                style.theme_use("clam")
+
+            def restore_theme(event):
+                if event.widget is table_holder:
+                    current_style = ttk.Style()
+
+                    if current_style.theme_use() != previous_theme:
+                        current_style.theme_use(previous_theme)
+
+            table_holder.bind(
+                "<Destroy>",
+                restore_theme,
+                add="+"
+            )
+
+            style.configure(
+                "AdminAccounts.Treeview",
+                background=colors["panel"],
+                fieldbackground=colors["panel"],
+                foreground=colors["text"],
+                rowheight=39,
+                font=("Arial", 11),
+                borderwidth=0,
+                relief="flat"
+            )
+
+            style.configure(
+                "AdminAccounts.Treeview.Heading",
+                background=colors["header"],
+                foreground="#FFFFFF",
+                font=("Arial", 11, "bold"),
+                padding=(10, 12),
+                borderwidth=0,
+                relief="flat"
+            )
+
+            style.map(
+                "AdminAccounts.Treeview",
+                background=[
+                    ("selected", colors["blue"])
+                ],
+                foreground=[
+                    ("selected", "#FFFFFF")
+                ]
+            )
+
+            style.map(
+                "AdminAccounts.Treeview.Heading",
+                background=[
+                    ("active", "#304B70"),
+                    ("pressed", colors["header"])
+                ],
+                foreground=[
+                    ("active", "#FFFFFF")
+                ]
+            )
+
+            # ====================================================
+            # DARK SCROLLBARS
+            # ====================================================
+
+            for orientation in ("Vertical", "Horizontal"):
+                scrollbar_style = (
+                    f"AdminAccounts.{orientation}.TScrollbar"
+                )
+
+                style.configure(
+                    scrollbar_style,
+                    background="#304B70",
+                    troughcolor="#111F35",
+                    arrowcolor="#FFFFFF",
+                    bordercolor=colors["panel"],
+                    lightcolor="#304B70",
+                    darkcolor="#304B70",
+                    gripcount=0,
+                    borderwidth=0,
+                    relief="flat",
+                    width=13
+                )
+
+                style.map(
+                    scrollbar_style,
+                    background=[
+                        ("active", "#456B9B"),
+                        ("pressed", colors["blue"])
+                    ]
+                )
+
+            # ====================================================
+            # ACCOUNT TABLE
+            # ====================================================
+
+            columns = (
+                "id",
+                "number",
+                "customer",
+                "balance",
+                "currency",
+                "status"
+            )
+
+            tree = ttk.Treeview(
+                table_area,
+                columns=columns,
+                show="headings",
+                style="AdminAccounts.Treeview",
+                selectmode="browse"
+            )
+
+            column_specs = (
+                ("id", "Account ID", 110),
+                ("number", "Account Number", 250),
+                ("customer", "Customer Name", 210),
+                ("balance", "Balance", 150),
+                ("currency", "Currency", 115),
+                ("status", "Status", 140)
+            )
+
+            for key, heading, width in column_specs:
+                tree.heading(
+                    key,
+                    text=heading
+                )
+
+                tree.column(
+                    key,
+                    width=width,
+                    minwidth=90,
+                    anchor=(
+                        "w"
+                        if key in ("number", "customer")
+                        else "center"
+                    ),
+                    stretch=True
+                )
+
+            yscroll = ttk.Scrollbar(
+                table_area,
+                orient="vertical",
+                command=tree.yview,
+                style="AdminAccounts.Vertical.TScrollbar"
+            )
+
+            xscroll = ttk.Scrollbar(
+                table_area,
+                orient="horizontal",
+                command=tree.xview,
+                style="AdminAccounts.Horizontal.TScrollbar"
+            )
+
+            tree.configure(
+                yscrollcommand=yscroll.set,
+                xscrollcommand=xscroll.set
+            )
+
+            yscroll.pack(
+                side="right",
+                fill="y"
+            )
+
+            xscroll.pack(
+                side="bottom",
+                fill="x"
+            )
+
+            tree.pack(
+                side="left",
+                fill="both",
+                expand=True
+            )
+
+            # ====================================================
+            # ROW COLORS
+            # ====================================================
+
+            status_colors = {
+                "Active": "#4ADE80",
+                "Frozen": "#FBBF24",
+                "Inactive": "#9EB2D0"
+            }
+
+            for status, foreground in status_colors.items():
+                for parity, background in (
+                    ("even", "#17263F"),
+                    ("odd", "#1C2D48")
+                ):
+                    tree.tag_configure(
+                        f"{status}_{parity}",
+                        background=background,
+                        foreground=foreground
+                    )
+
+            # ====================================================
+            # ACCOUNT FILTER - ORIGINAL BEHAVIOR
+            # ====================================================
 
             def refresh_accounts(*args):
                 selected_customer = customer_combo.get()
 
                 tree.delete(*tree.get_children())
+
+                visible_index = 0
 
                 for row in rows:
                     customer_name = str(row[2]).strip()
@@ -4297,6 +5766,12 @@ class App(ctk.CTk):
                         row[7]
                     )
 
+                    parity = (
+                        "even"
+                        if visible_index % 2 == 0
+                        else "odd"
+                    )
+
                     tree.insert(
                         "",
                         "end",
@@ -4308,18 +5783,20 @@ class App(ctk.CTk):
                             str(row[5]).strip(),
                             status
                         ),
-                        tags=(status,)
+                        tags=(f"{status}_{parity}",)
                     )
+
+                    visible_index += 1
+
+                update_admin_buttons()
 
             customer_combo.configure(
                 command=refresh_accounts
             )
 
-            refresh_accounts()
-
-            # ================================================
-            # SELECT ADMIN ACCOUNT
-            # ================================================
+            # ====================================================
+            # SELECT ADMIN ACCOUNT - ORIGINAL LOGIC
+            # ====================================================
 
             def get_selected_account():
                 selection = tree.selection()
@@ -4341,9 +5818,9 @@ class App(ctk.CTk):
                     "status": values[5]
                 }
 
-            # ================================================
-            # ADMIN - FREEZE ACCOUNT
-            # ================================================
+            # ====================================================
+            # ADMIN - FREEZE ACCOUNT - ORIGINAL LOGIC
+            # ====================================================
 
             def freeze_selected():
                 def action():
@@ -4357,7 +5834,7 @@ class App(ctk.CTk):
                             "can be frozen."
                         )
 
-                    confirmed = messagebox.askyesno(
+                    confirmed = self.ask_yes_no(
                         "Confirm Account Freeze",
                         (
                             f"Customer: {account['customer']}\n"
@@ -4377,7 +5854,7 @@ class App(ctk.CTk):
                         account["id"]
                     )
 
-                    messagebox.showinfo(
+                    self.show_ok(
                         "Account Frozen",
                         "The account has been frozen successfully."
                     )
@@ -4386,9 +5863,9 @@ class App(ctk.CTk):
 
                 self.run(action)
 
-            # ================================================
-            # ADMIN ONLY - UNFREEZE ACCOUNT
-            # ================================================
+            # ====================================================
+            # ADMIN - UNFREEZE ACCOUNT - ORIGINAL LOGIC
+            # ====================================================
 
             def unfreeze_selected():
                 def action():
@@ -4401,7 +5878,7 @@ class App(ctk.CTk):
                             "Only frozen accounts can be unfrozen."
                         )
 
-                    confirmed = messagebox.askyesno(
+                    confirmed = self.ask_yes_no(
                         "Confirm Account Unfreeze",
                         (
                             f"Customer: {account['customer']}\n"
@@ -4419,7 +5896,7 @@ class App(ctk.CTk):
                         account["id"]
                     )
 
-                    messagebox.showinfo(
+                    self.show_ok(
                         "Account Unfrozen",
                         "The account has been unfrozen successfully."
                     )
@@ -4428,55 +5905,45 @@ class App(ctk.CTk):
 
                 self.run(action)
 
-            # ================================================
-            # ADMIN ACCOUNT ACTIONS
-            # ================================================
+            # ====================================================
+            # ACCOUNT ACTION BUTTONS
+            # ====================================================
 
-            action_frame = ctk.CTkFrame(
-                page,
-                fg_color="transparent"
-            )
 
-            action_frame.pack(
-                fill="x",
-                padx=22,
-                pady=(8, 18)
-            )
-
-            freeze_button = self.button(
+            freeze_button = ctk.CTkButton(
                 action_frame,
-                "Freeze Selected Account",
-                freeze_selected,
-                width=210
+                text="Freeze Selected Account",
+                command=freeze_selected,
+                width=215,
+                height=43,
+                corner_radius=10,
+                fg_color="#A13B43",
+                hover_color="#862D35",
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
             )
-
             freeze_button.pack(
                 side="left",
-                padx=(0, 10)
+                padx=(0, 12)
             )
 
-            unfreeze_button = self.button(
+            unfreeze_button = ctk.CTkButton(
                 action_frame,
-                "Unfreeze Selected Account",
-                unfreeze_selected,
-                width=210
+                text="Unfreeze Selected Account",
+                command=unfreeze_selected,
+                width=225,
+                height=43,
+                corner_radius=10,
+                fg_color="#276A91",
+                hover_color="#205674",
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
             )
+            unfreeze_button.pack(side="left")
 
-            unfreeze_button.pack(
-                side="left",
-                padx=5
-            )
-
-            self.button(
-                action_frame,
-                "Refresh",
-                lambda: self.run(self.show_accounts),
-                width=120
-            ).pack(
-                side="right"
-            )
-
-            # Enable actions according to account status.
+            # ====================================================
+            # SELECTION STATE - ORIGINAL BEHAVIOR
+            # ====================================================
 
             def update_admin_buttons(event=None):
                 selection = tree.selection()
@@ -4485,11 +5952,9 @@ class App(ctk.CTk):
                     freeze_button.configure(
                         state="disabled"
                     )
-
                     unfreeze_button.configure(
                         state="disabled"
                     )
-
                     return
 
                 values = tree.item(
@@ -4520,64 +5985,119 @@ class App(ctk.CTk):
                 update_admin_buttons
             )
 
-            update_admin_buttons()
+            refresh_accounts()
 
             return
+
 
         # ====================================================
         # CUSTOMER ACCOUNT OVERVIEW
         # ====================================================
 
         active_count = sum(
-            1
-            for row in rows
-            if bool(row[5])
+            1 for row in rows if bool(row[5])
         )
 
         frozen_count = sum(
-            1
-            for row in rows
+            1 for row in rows
             if bool(row[5]) and bool(row[6])
         )
 
-        info_frame = ctk.CTkFrame(
+        palette = {
+            "panel": "#17263F",
+            "panel_alt": "#243A59",
+            "border": "#2B4161",
+            "text": "#F5F8FF",
+            "muted": "#9EB2D0",
+            "accent": "#3478F6",
+            "green": "#4ADE80",
+            "red": "#FCA5A5"
+        }
+
+        overview = ctk.CTkFrame(
             page,
-            fg_color=CARD,
-            corner_radius=14
+            fg_color="transparent"
         )
 
-        info_frame.pack(
+        overview.pack(
             fill="x",
             padx=22,
-            pady=(8, 14)
+            pady=(8, 12)
         )
 
         ctk.CTkLabel(
-            info_frame,
+            overview,
             text="Account Overview",
-            font=("Arial", 18, "bold"),
-            text_color=WHITE,
+            font=("Arial", 19, "bold"),
+            text_color=palette["text"],
             anchor="w"
         ).pack(
             fill="x",
-            padx=20,
-            pady=(18, 12)
+            pady=(0, 12)
         )
 
-        ctk.CTkLabel(
-            info_frame,
-            text=(
-                f"Active Accounts: {active_count} / 3"
-                f"    |    Frozen Accounts: {frozen_count}"
-            ),
-            font=("Arial", 15, "bold"),
-            text_color=WHITE,
-            anchor="w"
-        ).pack(
-            fill="x",
-            padx=20,
-            pady=(0, 18 if frozen_count == 0 else 10)
+        # ====================================================
+        # ACCOUNT STATISTICS CARDS
+        # ====================================================
+
+        metrics = ctk.CTkFrame(
+            overview,
+            fg_color="transparent"
         )
+        metrics.pack(fill="x")
+
+        for column in range(3):
+            metrics.grid_columnconfigure(
+                column,
+                weight=1,
+                uniform="account_metrics"
+            )
+
+        metric_items = (
+            ("TOTAL ACCOUNTS", str(len(rows)), "#93C5FD"),
+            ("ACTIVE ACCOUNTS", f"{active_count} / 3", palette["green"]),
+            ("FROZEN ACCOUNTS", str(frozen_count), palette["red"])
+        )
+
+        for index, (label, value, color) in enumerate(metric_items):
+            metric = ctk.CTkFrame(
+                metrics,
+                fg_color=palette["panel"],
+                corner_radius=16,
+                border_width=1,
+                border_color=palette["border"]
+            )
+
+            metric.grid(
+                row=0,
+                column=index,
+                sticky="nsew",
+                padx=5
+            )
+
+            ctk.CTkLabel(
+                metric,
+                text=label,
+                font=("Arial", 11, "bold"),
+                text_color=palette["muted"],
+                anchor="w"
+            ).pack(
+                fill="x",
+                padx=20,
+                pady=(18, 7)
+            )
+
+            ctk.CTkLabel(
+                metric,
+                text=value,
+                font=("Arial", 27, "bold"),
+                text_color=color,
+                anchor="w"
+            ).pack(
+                fill="x",
+                padx=20,
+                pady=(0, 18)
+            )
 
         # ====================================================
         # CUSTOMER SECURITY WARNING
@@ -4585,17 +6105,17 @@ class App(ctk.CTk):
 
         if frozen_count > 0:
             warning_frame = ctk.CTkFrame(
-                info_frame,
+                page,
                 fg_color="#3B2029",
-                corner_radius=10,
+                corner_radius=12,
                 border_width=1,
                 border_color="#991B1B"
             )
 
             warning_frame.pack(
                 fill="x",
-                padx=20,
-                pady=(0, 18)
+                padx=27,
+                pady=(0, 14)
             )
 
             ctk.CTkLabel(
@@ -4606,8 +6126,8 @@ class App(ctk.CTk):
                 anchor="w"
             ).pack(
                 fill="x",
-                padx=16,
-                pady=(14, 6)
+                padx=18,
+                pady=(15, 6)
             )
 
             ctk.CTkLabel(
@@ -4628,8 +6148,8 @@ class App(ctk.CTk):
                 wraplength=800
             ).pack(
                 fill="x",
-                padx=16,
-                pady=(0, 15)
+                padx=18,
+                pady=(0, 16)
             )
 
         # ====================================================
@@ -4643,50 +6163,256 @@ class App(ctk.CTk):
 
         toolbar.pack(
             fill="x",
-            padx=22,
+            padx=27,
+            pady=(4, 12)
+        )
+
+        ctk.CTkLabel(
+            toolbar,
+            text="Your Bank Accounts",
+            font=("Arial", 18, "bold"),
+            text_color=palette["text"],
+            anchor="w"
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            toolbar,
+            text="+ Create Account",
+            command=self.show_account_type_selection,
+            width=175,
+            height=42,
+            corner_radius=11,
+            fg_color=palette["accent"],
+            hover_color=BLUE_HOVER,
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold")
+        ).pack(
+            side="right",
+            padx=(10, 0)
+        )
+
+        ctk.CTkButton(
+            toolbar,
+            text="Refresh",
+            command=lambda: self.run(self.show_accounts),
+            width=110,
+            height=42,
+            corner_radius=11,
+            fg_color=palette["panel_alt"],
+            hover_color=palette["border"],
+            border_width=1,
+            border_color=palette["border"],
+            text_color=palette["text"],
+            font=("Arial", 12, "bold")
+        ).pack(side="right")
+
+        # ====================================================
+        # CUSTOMER ACCOUNTS TABLE - WINDOWS DARK FIX
+        # ====================================================
+
+        table_holder = ctk.CTkFrame(
+            page,
+            fg_color=palette["panel"],
+            corner_radius=16,
+            border_width=1,
+            border_color=palette["border"]
+        )
+
+        table_holder.pack(
+            fill="both",
+            expand=True,
+            padx=27,
             pady=(0, 12)
         )
 
-        self.button(
-            toolbar,
-            "Create Account",
-            self.show_account_type_selection
-        ).pack(
-            side="left"
+        table_area = ctk.CTkFrame(
+            table_holder,
+            fg_color=palette["panel"]
         )
 
-        self.button(
-            toolbar,
-            "Refresh",
-            lambda: self.run(self.show_accounts),
-            width=120
-        ).pack(
-            side="right"
+        table_area.pack(
+            fill="both",
+            expand=True,
+            padx=12,
+            pady=12
         )
 
-        # ====================================================
-        # CUSTOMER ACCOUNTS TABLE
-        # ====================================================
+        # Windows ttk theme fix.
+        # Preserve the original theme for other pages.
 
-        tree = self.table(
-            page,
-            (
+        style = ttk.Style()
+        previous_theme = style.theme_use()
+
+        if previous_theme != "clam":
+            style.theme_use("clam")
+
+        def restore_table_theme(event):
+            if event.widget is table_holder:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        table_holder.bind(
+            "<Destroy>",
+            restore_table_theme,
+            add="+"
+        )
+
+        # Separate My Accounts table style.
+
+        style.configure(
+            "MyAccounts.Treeview",
+            background=palette["panel"],
+            fieldbackground=palette["panel"],
+            foreground=palette["text"],
+            rowheight=43,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.configure(
+            "MyAccounts.Treeview.Heading",
+            background=palette["panel_alt"],
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(12, 13),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.map(
+            "MyAccounts.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        style.map(
+            "MyAccounts.Treeview.Heading",
+            background=[
+                ("active", "#2D4669"),
+                ("pressed", palette["panel_alt"])
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        tree = ttk.Treeview(
+            table_area,
+            columns=(
                 "id",
                 "number",
                 "balance",
                 "currency",
                 "status"
             ),
-            (
-                "Account ID",
-                "Account Number",
-                "Balance",
-                "Currency",
-                "Status"
-            )
+            show="headings",
+            style="MyAccounts.Treeview"
         )
 
-        configure_status_colors(tree)
+        column_specs = (
+            ("id", "Account ID", 120),
+            ("number", "Account Number", 230),
+            ("balance", "Balance", 170),
+            ("currency", "Currency", 120),
+            ("status", "Status", 140)
+        )
+
+        for key, heading, width in column_specs:
+            tree.heading(
+                key,
+                text=heading
+            )
+
+            tree.column(
+                key,
+                width=width,
+                minwidth=90,
+                anchor="center",
+                stretch=True
+            )
+
+        # Dark scrollbars.
+
+        style.configure(
+            "MyAccounts.Vertical.TScrollbar",
+            background="#243A59",
+            troughcolor="#17263F",
+            arrowcolor="#FFFFFF",
+            borderwidth=0
+        )
+
+        style.configure(
+            "MyAccounts.Horizontal.TScrollbar",
+            background="#243A59",
+            troughcolor="#17263F",
+            arrowcolor="#FFFFFF",
+            borderwidth=0
+        )
+
+        yscroll = ttk.Scrollbar(
+            table_area,
+            orient="vertical",
+            command=tree.yview,
+            style="MyAccounts.Vertical.TScrollbar"
+        )
+
+        xscroll = ttk.Scrollbar(
+            table_area,
+            orient="horizontal",
+            command=tree.xview,
+            style="MyAccounts.Horizontal.TScrollbar"
+        )
+
+        tree.configure(
+            yscrollcommand=yscroll.set,
+            xscrollcommand=xscroll.set
+        )
+
+        yscroll.pack(
+            side="right",
+            fill="y"
+        )
+
+        xscroll.pack(
+            side="bottom",
+            fill="x"
+        )
+
+        tree.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+        # ====================================================
+        # ACCOUNT STATUS COLORS
+        # ====================================================
+
+        tree.tag_configure(
+            "Active",
+            foreground=palette["green"]
+        )
+
+        tree.tag_configure(
+            "Frozen",
+            foreground=palette["red"]
+        )
+
+        tree.tag_configure(
+            "Inactive",
+            foreground="#A5B4CC"
+        )
+
+        # ====================================================
+        # POPULATE CUSTOMER ACCOUNTS
+        # ====================================================
 
         for row in rows:
             status = account_status(
@@ -4708,7 +6434,62 @@ class App(ctk.CTk):
             )
 
         # ====================================================
+        # EMPTY ACCOUNTS STATE - CENTERED DESIGN
+        # ====================================================
+
+        if not rows:
+            empty_state = ctk.CTkFrame(
+                table_holder,
+                width=440,
+                height=230,
+                fg_color=palette["panel"],
+                corner_radius=16,
+                border_width=1,
+                border_color=palette["border"]
+            )
+
+            empty_state.place(
+                relx=0.5,
+                rely=0.54,
+                anchor="center"
+            )
+
+            empty_state.pack_propagate(False)
+
+            ctk.CTkLabel(
+                empty_state,
+                text="No accounts yet",
+                font=("Arial", 22, "bold"),
+                text_color="#FFFFFF"
+            ).pack(
+                pady=(40, 10)
+            )
+
+            ctk.CTkLabel(
+                empty_state,
+                text="Create your first bank account to get started.",
+                font=("Arial", 13),
+                text_color=palette["muted"]
+            ).pack(
+                pady=(0, 22)
+            )
+
+            ctk.CTkButton(
+                empty_state,
+                text="+ Create Account",
+                command=self.show_account_type_selection,
+                width=190,
+                height=43,
+                corner_radius=11,
+                fg_color=palette["accent"],
+                hover_color=BLUE_HOVER,
+                text_color="#FFFFFF",
+                font=("Arial", 12, "bold")
+            ).pack()
+
+        # ====================================================
         # CUSTOMER - CLOSE ACCOUNT
+        # ORIGINAL BUSINESS LOGIC PRESERVED
         # ====================================================
 
         def close_selected_account():
@@ -4723,11 +6504,10 @@ class App(ctk.CTk):
                 selected = tree.selection()
 
                 if not selected:
-                    messagebox.showwarning(
+                    self.show_ok(
                         "Select Account",
                         "Please select an account first."
                     )
-
                     return
 
                 values = tree.item(
@@ -4758,7 +6538,7 @@ class App(ctk.CTk):
                         "can be closed."
                     )
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Account Closure",
                     (
                         "Close this bank account?\n\n"
@@ -4771,11 +6551,9 @@ class App(ctk.CTk):
                 if not confirmed:
                     return
 
-                self.db.delete_account(
-                    account_id
-                )
+                self.db.delete_account(account_id)
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Success",
                     "Your bank account has been closed successfully."
                 )
@@ -4795,22 +6573,31 @@ class App(ctk.CTk):
 
         action_frame.pack(
             fill="x",
-            padx=22,
-            pady=(10, 18)
+            padx=27,
+            pady=(8, 18)
         )
 
-        close_button = self.button(
+        close_button = ctk.CTkButton(
             action_frame,
-            "Close Selected Account",
-            close_selected_account,
-            width=220
+            text="Close Selected Account",
+            command=close_selected_account,
+            width=220,
+            height=43,
+            corner_radius=11,
+            fg_color="#263A58",
+            hover_color="#334E74",
+            border_width=1,
+            border_color="#456184",
+            text_color="#F5F8FF",
+            font=("Arial", 12, "bold")
         )
 
-        close_button.pack(
-            side="left"
-        )
+        close_button.pack(side="left")
 
-        # Customers cannot freeze or unfreeze bank accounts.
+        # ====================================================
+        # UPDATE CLOSE BUTTON STATE
+        # ORIGINAL BUSINESS LOGIC PRESERVED
+        # ====================================================
 
         def update_customer_buttons(event=None):
             selection = tree.selection()
@@ -4819,7 +6606,6 @@ class App(ctk.CTk):
                 close_button.configure(
                     state="disabled"
                 )
-
                 return
 
             values = tree.item(
@@ -5606,7 +7392,7 @@ class App(ctk.CTk):
             # CONFIRM CREDIT CARD TRANSACTION
             # ================================================
 
-            confirmed = messagebox.askyesno(
+            confirmed = self.ask_yes_no(
                 "Confirm Transaction",
                 (
                     f"Operation: {selected_kind}\n"
@@ -5633,7 +7419,7 @@ class App(ctk.CTk):
                 transaction_description
             )
 
-            messagebox.showinfo(
+            self.show_ok(
                 "Transaction Completed",
                 (
                     f"{selected_kind} completed "
@@ -5749,7 +7535,7 @@ class App(ctk.CTk):
                     description.get()
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Transaction Completed",
                     f"Transaction ID: {tx_id}"
                 )
@@ -5869,8 +7655,86 @@ class App(ctk.CTk):
         )
 
         # ====================================================
+        # TRANSACTION HISTORY - DARK TABLE STYLE
+        # ====================================================
+
+        transaction_style = ttk.Style()
+        previous_theme = transaction_style.theme_use()
+
+        if previous_theme != "clam":
+            transaction_style.theme_use("clam")
+
+        transaction_style.configure(
+            "TransactionsDark.Treeview",
+            background="#17263F",
+            fieldbackground="#17263F",
+            foreground="#F5F8FF",
+            rowheight=34,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        transaction_style.configure(
+            "TransactionsDark.Treeview.Heading",
+            background="#243A59",
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(10, 9),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        transaction_style.map(
+            "TransactionsDark.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        transaction_style.map(
+            "TransactionsDark.Treeview.Heading",
+            background=[
+                ("active", "#304B70")
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"TransactionsDark.{orientation}.TScrollbar"
+            )
+
+            transaction_style.configure(
+                scrollbar_style,
+                background="#304B70",
+                troughcolor="#111F35",
+                arrowcolor="#FFFFFF",
+                bordercolor="#17263F",
+                lightcolor="#304B70",
+                darkcolor="#304B70",
+                borderwidth=0,
+                relief="flat",
+                width=13
+            )
+
+            transaction_style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#456B9B"),
+                    ("pressed", "#3478F6")
+                ]
+            )
+
+        # ====================================================
         # HISTORY TABLE CONTAINER
         # ====================================================
+
 
         history_container = ctk.CTkFrame(
             page,
@@ -5881,6 +7745,21 @@ class App(ctk.CTk):
             fill="both",
             expand=True
         )
+
+        # Restore the previous ttk theme when leaving this page.
+        def restore_transaction_theme(event):
+            if event.widget is history_container:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        history_container.bind(
+            "<Destroy>",
+            restore_transaction_theme,
+            add="+"
+        )
+
 
         # ====================================================
         # BANK TRANSACTION HISTORY
@@ -5951,6 +7830,38 @@ class App(ctk.CTk):
                 columns,
                 headings
             )
+
+
+            # Dark style for bank transaction history
+            tree.configure(
+                style="TransactionsDark.Treeview"
+            )
+
+
+            # Apply dark styles to existing table scrollbars.
+            # Search recursively because self.table() may
+            # create scrollbars inside a nested frame.
+
+            def apply_dark_scrollbars(widget):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Scrollbar):
+                        orientation = str(
+                            child.cget("orient")
+                        )
+
+                        if orientation == "vertical":
+                            child.configure(
+                                style="TransactionsDark.Vertical.TScrollbar"
+                            )
+                        else:
+                            child.configure(
+                                style="TransactionsDark.Horizontal.TScrollbar"
+                            )
+
+                    apply_dark_scrollbars(child)
+
+            apply_dark_scrollbars(history_container)
+
 
             for row in rows:
 
@@ -6067,6 +7978,38 @@ class App(ctk.CTk):
                 columns,
                 headings
             )
+
+
+            # Dark style for credit card transaction history
+            tree.configure(
+                style="TransactionsDark.Treeview"
+            )
+
+
+            # Apply dark styles to existing table scrollbars.
+            # Search recursively because self.table() may
+            # create scrollbars inside a nested frame.
+
+            def apply_dark_scrollbars(widget):
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Scrollbar):
+                        orientation = str(
+                            child.cget("orient")
+                        )
+
+                        if orientation == "vertical":
+                            child.configure(
+                                style="TransactionsDark.Vertical.TScrollbar"
+                            )
+                        else:
+                            child.configure(
+                                style="TransactionsDark.Horizontal.TScrollbar"
+                            )
+
+                    apply_dark_scrollbars(child)
+
+            apply_dark_scrollbars(history_container)
+
 
             type_labels = {
                 "Purchase": "Purchase",
@@ -6268,7 +8211,7 @@ class App(ctk.CTk):
 
                 count = self.db.scan_fraud()
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Fraud Detection",
                     (
                         "Fraud detection completed.\n\n"
@@ -6584,6 +8527,88 @@ class App(ctk.CTk):
         # ALERT TABLE
         # ====================================================
 
+        fraud_style = ttk.Style()
+        previous_fraud_theme = fraud_style.theme_use()
+
+        # Windows native themes may ignore Treeview colors.
+        if previous_fraud_theme != "clam":
+            fraud_style.theme_use("clam")
+
+        fraud_style.configure(
+            "FraudAlerts.Treeview",
+            background="#17263F",
+            fieldbackground="#17263F",
+            foreground="#F5F8FF",
+            rowheight=36,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        fraud_style.configure(
+            "FraudAlerts.Treeview.Heading",
+            background="#243A59",
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(10, 9),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        fraud_style.map(
+            "FraudAlerts.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        fraud_style.map(
+            "FraudAlerts.Treeview.Heading",
+            background=[
+                ("active", "#304B70")
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        # ====================================================
+        # DARK SCROLLBARS
+        # ====================================================
+
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"FraudAlerts.{orientation}.TScrollbar"
+            )
+
+            fraud_style.configure(
+                scrollbar_style,
+                background="#304B70",
+                troughcolor="#111F35",
+                arrowcolor="#FFFFFF",
+                bordercolor="#17263F",
+                lightcolor="#304B70",
+                darkcolor="#304B70",
+                borderwidth=0,
+                relief="flat",
+                width=13
+            )
+
+            fraud_style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#456B9B"),
+                    ("pressed", "#3478F6")
+                ]
+            )
+
+        # ====================================================
+        # CREATE TABLE - ORIGINAL COLUMNS
+        # ====================================================
+
         tree = self.table(
             page,
             columns,
@@ -6591,8 +8616,48 @@ class App(ctk.CTk):
         )
 
         tree.configure(
+            style="FraudAlerts.Treeview",
             selectmode="browse"
         )
+
+        # ====================================================
+        # APPLY DARK SCROLLBARS
+        # ====================================================
+
+        table_frame = tree.master
+
+        for widget in table_frame.winfo_children():
+            if isinstance(widget, ttk.Scrollbar):
+                orientation = str(widget.cget("orient"))
+
+                widget.configure(
+                    style=(
+                        "FraudAlerts.Vertical.TScrollbar"
+                        if orientation == "vertical"
+                        else "FraudAlerts.Horizontal.TScrollbar"
+                    )
+                )
+
+        # ====================================================
+        # RESTORE PREVIOUS THEME ON PAGE CHANGE
+        # ====================================================
+
+        def restore_fraud_theme(event):
+            if event.widget is tree:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_fraud_theme:
+                    current_style.theme_use(previous_fraud_theme)
+
+        tree.bind(
+            "<Destroy>",
+            restore_fraud_theme,
+            add="+"
+        )
+
+        # ====================================================
+        # ORIGINAL COLUMN SETTINGS
+        # ====================================================
 
         tree.column(
             "source",
@@ -7182,7 +9247,7 @@ class App(ctk.CTk):
                 # CONFIRM ADMIN DECISION
                 # ============================================
 
-                confirmed = messagebox.askyesno(
+                confirmed = self.ask_yes_no(
                     "Confirm Decision",
                     (
                         f"Alert ID: {alert_id}\n"
@@ -7238,7 +9303,7 @@ class App(ctk.CTk):
                         "has been restricted."
                     )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Success",
                     success_message
                 )
@@ -7346,178 +9411,382 @@ class App(ctk.CTk):
     # FRAUD RULES SCREEN
     # ============================================================
 
-
     def show_rules(self):
         self.db.require_admin()
 
         page = self.page("Fraud Rules")
 
         # ====================================================
-        # PAGE INTRODUCTION
+        # FRAUD RULES - COLOR PALETTE
+        # ====================================================
+
+        panel_color = "#17263F"
+        header_color = "#243A59"
+        border_color = "#2B4161"
+        text_color = "#F5F8FF"
+        muted_color = "#9EB2D0"
+
+        # ====================================================
+        # FRAUD DETECTION RULES BANNER
         # ====================================================
 
         overview = ctk.CTkFrame(
             page,
-            fg_color=CARD,
-            corner_radius=14
+            fg_color=panel_color,
+            corner_radius=15,
+            border_width=1,
+            border_color=border_color
         )
         overview.pack(
             fill="x",
-            padx=20,
-            pady=(8, 14)
+            padx=22,
+            pady=(8, 16)
+        )
+
+        banner_content = ctk.CTkFrame(
+            overview,
+            fg_color="transparent"
+        )
+        banner_content.pack(
+            fill="x",
+            padx=22,
+            pady=20
+        )
+
+        icon_box = ctk.CTkFrame(
+            banner_content,
+            width=62,
+            height=62,
+            fg_color="#214575",
+            corner_radius=13
+        )
+        icon_box.pack(side="left", padx=(0, 18))
+        icon_box.pack_propagate(False)
+
+        ctk.CTkLabel(
+            icon_box,
+            text="✓",
+            font=("Arial", 30, "bold"),
+            text_color="#93C5FD"
+        ).pack(expand=True)
+
+        banner_text = ctk.CTkFrame(
+            banner_content,
+            fg_color="transparent"
+        )
+        banner_text.pack(
+            side="left",
+            fill="both",
+            expand=True
         )
 
         ctk.CTkLabel(
-            overview,
+            banner_text,
             text="Fraud Detection Rules",
-            font=("Arial", 19, "bold"),
-            text_color=WHITE,
+            font=("Arial", 20, "bold"),
+            text_color=text_color,
             anchor="w"
         ).pack(
             fill="x",
-            padx=22,
-            pady=(20, 6)
+            pady=(3, 7)
         )
 
         ctk.CTkLabel(
-            overview,
+            banner_text,
             text=(
                 "Review the configured fraud detection rules, "
                 "thresholds, monitoring windows and activation status."
             ),
             font=("Arial", 12),
-            text_color=MUTED,
+            text_color=muted_color,
             anchor="w",
             justify="left",
-            wraplength=800
-        ).pack(
-            fill="x",
-            padx=22,
-            pady=(0, 20)
-        )
+            wraplength=900
+        ).pack(fill="x")
 
         # ====================================================
-        # RULES SECTION HEADER
+        # CONFIGURED RULES HEADER
         # ====================================================
 
-        header = ctk.CTkFrame(
+        section = ctk.CTkFrame(
             page,
             fg_color="transparent"
         )
-        header.pack(
+        section.pack(
             fill="x",
             padx=22,
-            pady=(8, 2)
+            pady=(6, 14)
         )
 
         ctk.CTkLabel(
-            header,
-            text="Configured Rules",
-            font=("Arial", 18, "bold"),
-            text_color=WHITE,
+            section,
+            text="☷  Configured Rules",
+            font=("Arial", 19, "bold"),
+            text_color=text_color,
             anchor="w"
         ).pack(side="left")
+
+        # ====================================================
+        # DARK RULES TABLE CONTAINER
+        # ====================================================
+
+        table_holder = ctk.CTkFrame(
+            page,
+            fg_color=panel_color,
+            corner_radius=14,
+            border_width=1,
+            border_color=border_color
+        )
+        table_holder.pack(
+            fill="both",
+            expand=True,
+            padx=22,
+            pady=(0, 18)
+        )
+
+        table_area = ctk.CTkFrame(
+            table_holder,
+            fg_color=panel_color
+        )
+        table_area.pack(
+            fill="both",
+            expand=True,
+            padx=12,
+            pady=12
+        )
+
+        # ====================================================
+        # DARK TREEVIEW THEME
+        # ====================================================
+
+        style = ttk.Style()
+        previous_theme = style.theme_use()
+
+        if previous_theme != "clam":
+            style.theme_use("clam")
+
+        style.configure(
+            "FraudRules.Treeview",
+            background=panel_color,
+            fieldbackground=panel_color,
+            foreground=text_color,
+            rowheight=44,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.configure(
+            "FraudRules.Treeview.Heading",
+            background=header_color,
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(10, 12),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        style.map(
+            "FraudRules.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        style.map(
+            "FraudRules.Treeview.Heading",
+            background=[
+                ("active", "#304B70"),
+                ("pressed", header_color)
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        # ====================================================
+        # DARK SCROLLBAR STYLES
+        # ====================================================
+
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"FraudRules.{orientation}.TScrollbar"
+            )
+
+            style.configure(
+                scrollbar_style,
+                background="#304B70",
+                troughcolor="#111F35",
+                arrowcolor="#FFFFFF",
+                bordercolor=panel_color,
+                lightcolor="#304B70",
+                darkcolor="#304B70",
+                borderwidth=0,
+                relief="flat",
+                width=13
+            )
+
+            style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#456B9B"),
+                    ("pressed", "#3478F6")
+                ]
+            )
 
         # ====================================================
         # FRAUD RULES TABLE
         # ====================================================
 
-        tree = self.table(
-            page,
-            (
-                "id",
-                "name",
-                "type",
-                "threshold",
-                "window",
-                "active"
-            ),
-            (
-                "ID",
-                "Rule Name",
-                "Rule Type",
-                "Threshold",
-                "Window (min)",
-                "Active"
-            )
-        )
-
-        tree.column(
+        columns = (
             "id",
-            width=80,
-            minwidth=60,
-            anchor="center"
-        )
-
-        tree.column(
             "name",
-            width=230,
-            minwidth=160,
-            anchor="w"
-        )
-
-        tree.column(
             "type",
-            width=170,
-            minwidth=120,
-            anchor="center"
-        )
-
-        tree.column(
             "threshold",
-            width=150,
-            minwidth=100,
-            anchor="center"
-        )
-
-        tree.column(
             "window",
-            width=140,
-            minwidth=100,
-            anchor="center"
+            "active"
         )
 
-        tree.column(
-            "active",
-            width=110,
-            minwidth=80,
-            anchor="center"
+        headings = (
+            "ID",
+            "Rule Name",
+            "Rule Type",
+            "Threshold",
+            "Window (min)",
+            "Active"
+        )
+
+        tree = ttk.Treeview(
+            table_area,
+            columns=columns,
+            show="headings",
+            style="FraudRules.Treeview",
+            selectmode="browse"
+        )
+
+        column_specs = (
+            ("id", "ID", 80, "center"),
+            ("name", "Rule Name", 260, "w"),
+            ("type", "Rule Type", 190, "center"),
+            ("threshold", "Threshold", 160, "center"),
+            ("window", "Window (min)", 150, "center"),
+            ("active", "Active", 120, "center")
+        )
+
+        for key, title, width, anchor in column_specs:
+            tree.heading(
+                key,
+                text=title
+            )
+
+            tree.column(
+                key,
+                width=width,
+                minwidth=70,
+                anchor=anchor,
+                stretch=True
+            )
+
+        # ====================================================
+        # DARK SCROLLBARS
+        # ====================================================
+
+        yscroll = ttk.Scrollbar(
+            table_area,
+            orient="vertical",
+            command=tree.yview,
+            style="FraudRules.Vertical.TScrollbar"
+        )
+
+        xscroll = ttk.Scrollbar(
+            table_area,
+            orient="horizontal",
+            command=tree.xview,
+            style="FraudRules.Horizontal.TScrollbar"
+        )
+
+        tree.configure(
+            yscrollcommand=yscroll.set,
+            xscrollcommand=xscroll.set
+        )
+
+        yscroll.pack(
+            side="right",
+            fill="y"
+        )
+
+        xscroll.pack(
+            side="bottom",
+            fill="x"
+        )
+
+        tree.pack(
+            side="left",
+            fill="both",
+            expand=True
         )
 
         # ====================================================
-        # LOAD FRAUD RULES
+        # ALTERNATING ROW COLORS
         # ====================================================
 
-        self.refresh_table(
-            tree,
-            self.db.fraud_rules
+        tree.tag_configure(
+            "even",
+            background="#17263F",
+            foreground="#F5F8FF"
+        )
+
+        tree.tag_configure(
+            "odd",
+            background="#1C2D48",
+            foreground="#F5F8FF"
         )
 
         # ====================================================
-        # REFRESH ACTION
+        # LOAD FRAUD RULES FROM DATABASE
         # ====================================================
 
-        actions = ctk.CTkFrame(
-            page,
-            fg_color="transparent"
+        rules = self.db.fraud_rules()
+
+        for index, rule in enumerate(rules):
+            parity = "even" if index % 2 == 0 else "odd"
+
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    rule[0],
+                    rule[1],
+                    rule[2],
+                    rule[3],
+                    rule[4],
+                    rule[5]
+                ),
+                tags=(parity,)
+            )
+
+        # ====================================================
+        # RESTORE PREVIOUS THEME WHEN LEAVING PAGE
+        # ====================================================
+
+        def restore_rules_theme(event):
+            if event.widget is table_holder:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        table_holder.bind(
+            "<Destroy>",
+            restore_rules_theme,
+            add="+"
         )
-        actions.pack(
-            fill="x",
-            padx=22,
-            pady=(4, 18)
-        )
 
-        self.button(
-            actions,
-            "Refresh Rules",
-            lambda: self.refresh_table(
-                tree,
-                self.db.fraud_rules
-            ),
-            width=170
-        ).pack(side="right")
-
-
+        # No Refresh Rules button.
+        # Rules are loaded when the page is opened.
 
     # ============================================================
     # CUSTOMER FRAUD REVIEWS SCREEN
@@ -8526,13 +10795,105 @@ class App(ctk.CTk):
         )
 
         # ====================================================
+        # AUDIT OVERVIEW CARDS
+        # ====================================================
+
+        audit_colors = {
+            "panel": "#17263F",
+            "header": "#243A59",
+            "border": "#2B4161",
+            "text": "#F5F8FF",
+            "muted": "#9EB2D0",
+            "blue": "#93C5FD"
+        }
+
+        overview_frame = ctk.CTkFrame(
+            page,
+            fg_color="transparent"
+        )
+        overview_frame.pack(
+            fill="x",
+            padx=20,
+            pady=(0, 12)
+        )
+
+        for index in range(3):
+            overview_frame.grid_columnconfigure(
+                index,
+                weight=1,
+                uniform="audit_overview"
+            )
+
+        def create_audit_card(column, title, color):
+            card = ctk.CTkFrame(
+                overview_frame,
+                fg_color=audit_colors["panel"],
+                corner_radius=14,
+                border_width=1,
+                border_color=audit_colors["border"]
+            )
+            card.grid(
+                row=0,
+                column=column,
+                sticky="nsew",
+                padx=5
+            )
+
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=("Arial", 11, "bold"),
+                text_color=audit_colors["muted"],
+                anchor="w"
+            ).pack(
+                fill="x",
+                padx=18,
+                pady=(14, 6)
+            )
+
+            value_label = ctk.CTkLabel(
+                card,
+                text="—",
+                font=("Arial", 25, "bold"),
+                text_color=color,
+                anchor="w"
+            )
+            value_label.pack(
+                fill="x",
+                padx=18,
+                pady=(0, 14)
+            )
+
+            return value_label
+
+        total_value = create_audit_card(
+            0,
+            "TOTAL RECORDS",
+            "#93C5FD"
+        )
+
+        page_value = create_audit_card(
+            1,
+            "CURRENT PAGE",
+            "#F5F8FF"
+        )
+
+        showing_value = create_audit_card(
+            2,
+            "SHOWING",
+            "#4ADE80"
+        )
+
+        # ====================================================
         # FILTER PANEL
         # ====================================================
 
         filters = ctk.CTkFrame(
             page,
-            fg_color=CARD,
-            corner_radius=14
+            fg_color="#17263F",
+            corner_radius=14,
+            border_width=1,
+            border_color="#2B4161"
         )
         filters.pack(
             fill="x",
@@ -8716,6 +11077,84 @@ class App(ctk.CTk):
         summary.pack(side="right")
 
         # ====================================================
+        # AUDIT LOGS - DARK TABLE STYLE
+        # ====================================================
+
+        audit_style = ttk.Style()
+        previous_audit_theme = audit_style.theme_use()
+
+        if previous_audit_theme != "clam":
+            audit_style.theme_use("clam")
+
+        audit_style.configure(
+            "AuditLogs.Treeview",
+            background="#17263F",
+            fieldbackground="#17263F",
+            foreground="#F5F8FF",
+            rowheight=35,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        audit_style.configure(
+            "AuditLogs.Treeview.Heading",
+            background="#243A59",
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(10, 10),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        audit_style.map(
+            "AuditLogs.Treeview",
+            background=[
+                ("selected", "#3478F6")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        audit_style.map(
+            "AuditLogs.Treeview.Heading",
+            background=[
+                ("active", "#304B70")
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        # Dark scrollbars
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"AuditLogs.{orientation}.TScrollbar"
+            )
+
+            audit_style.configure(
+                scrollbar_style,
+                background="#304B70",
+                troughcolor="#111F35",
+                arrowcolor="#FFFFFF",
+                bordercolor="#17263F",
+                lightcolor="#304B70",
+                darkcolor="#304B70",
+                borderwidth=0,
+                relief="flat",
+                width=13
+            )
+
+            audit_style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#456B9B"),
+                    ("pressed", "#3478F6")
+                ]
+            )
+
+        # ====================================================
         # AUDIT LOG TABLE
         # ====================================================
 
@@ -8738,6 +11177,75 @@ class App(ctk.CTk):
                 "Created"
             )
         )
+
+
+        # ====================================================
+        # AUDIT LOGS - TABLE HEIGHT FIX
+        # Keep action buttons visible below the table.
+        # ====================================================
+
+        audit_table_holder = tree.master.master
+
+        audit_table_holder.pack_configure(
+            fill="both",
+            expand=False,
+            padx=20,
+            pady=(8, 8)
+        )
+
+        audit_table_holder.configure(
+            height=255
+        )
+
+        audit_table_holder.pack_propagate(False)
+
+
+
+        # Apply the dark style only to Audit Logs.
+        tree.configure(
+            style="AuditLogs.Treeview"
+        )
+
+        # Apply dark scrollbar styles to this table.
+        for widget in tree.master.winfo_children():
+            if isinstance(widget, ttk.Scrollbar):
+                orientation = str(widget.cget("orient"))
+
+                widget.configure(
+                    style=(
+                        "AuditLogs.Vertical.TScrollbar"
+                        if orientation == "vertical"
+                        else "AuditLogs.Horizontal.TScrollbar"
+                    )
+                )
+
+        # Alternating row backgrounds.
+        tree.tag_configure(
+            "audit_even",
+            background="#17263F",
+            foreground="#F5F8FF"
+        )
+
+        tree.tag_configure(
+            "audit_odd",
+            background="#1C2D48",
+            foreground="#F5F8FF"
+        )
+
+        # Restore the previous theme when this table is destroyed.
+        def restore_audit_theme(event):
+            if event.widget is tree:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_audit_theme:
+                    current_style.theme_use(previous_audit_theme)
+
+        tree.bind(
+            "<Destroy>",
+            restore_audit_theme,
+            add="+"
+        )
+
 
         tree.column(
             "id",
@@ -8801,7 +11309,14 @@ class App(ctk.CTk):
             for item in tree.get_children():
                 tree.delete(item)
 
-            for row in result["rows"]:
+
+            for index, row in enumerate(result["rows"]):
+                row_tag = (
+                    "audit_even"
+                    if index % 2 == 0
+                    else "audit_odd"
+                )
+
                 tree.insert(
                     "",
                     "end",
@@ -8812,8 +11327,10 @@ class App(ctk.CTk):
                         row[3],
                         str(row[4] or ""),
                         str(row[5])[:19]
-                    )
+                    ),
+                    tags=(row_tag,)
                 )
+
 
             summary.configure(
                 text=(
@@ -8823,6 +11340,12 @@ class App(ctk.CTk):
                     f"Showing: {len(result['rows'])}"
                 )
             )
+
+            total_value.configure(text=str(result["total"]))
+            page_value.configure(
+                text=f"{result['page']} / {result['total_pages']}"
+            )
+            showing_value.configure(text=str(len(result["rows"])))
 
             previous_button.configure(
                 state=(
@@ -8947,7 +11470,7 @@ class App(ctk.CTk):
                         )
                         write_rows(result["rows"])
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Export Complete",
                     (
                         "Filtered audit logs exported "
@@ -9059,6 +11582,7 @@ class App(ctk.CTk):
     # CUSTOMER NOTIFICATIONS
     # ============================================================
 
+
     def show_notifications(self):
         session = self.db.require_login()
 
@@ -9072,27 +11596,184 @@ class App(ctk.CTk):
         rows = self.db.notifications()
         unread_count = self.db.unread_notification_count()
 
-        info = ctk.CTkFrame(
+        # ====================================================
+        # NOTIFICATION SUMMARY CARD
+        # ====================================================
+
+        summary = ctk.CTkFrame(
             page,
-            fg_color=CARD,
-            corner_radius=12
+            fg_color="#142641",
+            corner_radius=14,
+            border_width=1,
+            border_color="#294568",
+            height=102
         )
-        info.pack(
+        summary.pack(
             fill="x",
-            padx=18,
+            padx=20,
             pady=(5, 10)
+        )
+        summary.pack_propagate(False)
+
+        summary_left = ctk.CTkFrame(
+            summary,
+            fg_color="transparent"
+        )
+        summary_left.pack(
+            side="left",
+            fill="y",
+            padx=(18, 12),
+            pady=15
+        )
+
+        icon_box = ctk.CTkFrame(
+            summary_left,
+            width=64,
+            height=64,
+            corner_radius=12,
+            fg_color="#23466F"
+        )
+        icon_box.pack(side="left")
+        icon_box.pack_propagate(False)
+
+        ctk.CTkLabel(
+            icon_box,
+            text="●",
+            font=("Arial", 30, "bold"),
+            text_color="#3B82F6"
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        count_frame = ctk.CTkFrame(
+            summary_left,
+            fg_color="transparent"
+        )
+        count_frame.pack(
+            side="left",
+            padx=(18, 25)
         )
 
         ctk.CTkLabel(
-            info,
-            text=f"Unread Notifications: {unread_count}",
-            font=("Arial", 17, "bold"),
-            text_color=WHITE
-        ).pack(
-            anchor="w",
-            padx=15,
-            pady=15
+            count_frame,
+            text="Unread Notifications",
+            font=("Arial", 15, "bold"),
+            text_color="#FFFFFF",
+            anchor="w"
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            count_frame,
+            text=str(unread_count),
+            font=("Arial", 30, "bold"),
+            text_color="#93C5FD",
+            anchor="w"
+        ).pack(anchor="w", pady=(2, 0))
+
+        separator = ctk.CTkFrame(
+            summary,
+            width=1,
+            fg_color="#345477"
         )
+        separator.pack(
+            side="left",
+            fill="y",
+            pady=20
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text=(
+                "Stay informed about your account, "
+                "credit cards and important updates."
+            ),
+            font=("Arial", 13),
+            text_color="#A9C1E3",
+            anchor="w",
+            justify="left",
+            wraplength=520
+        ).pack(
+            side="left",
+            fill="both",
+            expand=True,
+            padx=28
+        )
+
+        # ====================================================
+        # NOTIFICATIONS TABLE - DARK NAVY
+        # ====================================================
+
+        notification_style = ttk.Style()
+        previous_theme = notification_style.theme_use()
+
+        # Windows native themes may ignore Treeview colors.
+        if previous_theme != "clam":
+            notification_style.theme_use("clam")
+
+        notification_style.configure(
+            "Notifications.Treeview",
+            background="#10213B",
+            fieldbackground="#10213B",
+            foreground="#F4F8FF",
+            rowheight=39,
+            font=("Arial", 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        notification_style.configure(
+            "Notifications.Treeview.Heading",
+            background="#234266",
+            foreground="#FFFFFF",
+            font=("Arial", 11, "bold"),
+            padding=(12, 11),
+            borderwidth=0,
+            relief="flat"
+        )
+
+        notification_style.map(
+            "Notifications.Treeview",
+            background=[
+                ("selected", "#2563EB")
+            ],
+            foreground=[
+                ("selected", "#FFFFFF")
+            ]
+        )
+
+        notification_style.map(
+            "Notifications.Treeview.Heading",
+            background=[
+                ("active", "#30577F")
+            ],
+            foreground=[
+                ("active", "#FFFFFF")
+            ]
+        )
+
+        for orientation in ("Vertical", "Horizontal"):
+            scrollbar_style = (
+                f"Notifications.{orientation}.TScrollbar"
+            )
+
+            notification_style.configure(
+                scrollbar_style,
+                background="#29496D",
+                troughcolor="#10213B",
+                arrowcolor="#DCEAFF",
+                bordercolor="#10213B",
+                lightcolor="#29496D",
+                darkcolor="#29496D",
+                borderwidth=0,
+                relief="flat",
+                width=12
+            )
+
+            notification_style.map(
+                scrollbar_style,
+                background=[
+                    ("active", "#3A6594"),
+                    ("pressed", "#2563EB")
+                ]
+            )
 
         tree = self.table(
             page,
@@ -9114,20 +11795,115 @@ class App(ctk.CTk):
             )
         )
 
+        tree.configure(
+            style="Notifications.Treeview",
+            selectmode="browse"
+        )
+
+        # ====================================================
+        # TABLE COLUMNS
+        # ====================================================
+
+        tree.column(
+            "id",
+            width=75,
+            minwidth=65,
+            anchor="center",
+            stretch=False
+        )
+
         tree.column(
             "title",
-            width=200,
+            width=245,
+            minwidth=170,
             anchor="w"
         )
 
         tree.column(
             "message",
-            width=450,
-            minwidth=220,
+            width=430,
+            minwidth=250,
             anchor="w"
         )
 
-        for row in rows:
+        tree.column(
+            "type",
+            width=150,
+            minwidth=120,
+            anchor="center"
+        )
+
+        tree.column(
+            "status",
+            width=115,
+            minwidth=90,
+            anchor="center",
+            stretch=False
+        )
+
+        tree.column(
+            "created",
+            width=180,
+            minwidth=155,
+            anchor="center",
+            stretch=False
+        )
+
+        # ====================================================
+        # DARK SCROLLBARS - THIS TABLE ONLY
+        # ====================================================
+
+        table_frame = tree.master
+
+        for widget in table_frame.winfo_children():
+            if isinstance(widget, ttk.Scrollbar):
+                orientation = str(widget.cget("orient"))
+
+                widget.configure(
+                    style=(
+                        "Notifications.Vertical.TScrollbar"
+                        if orientation == "vertical"
+                        else "Notifications.Horizontal.TScrollbar"
+                    )
+                )
+
+        # Restore the previous theme when leaving this page.
+        def restore_notification_theme(event):
+            if event.widget is tree:
+                current_style = ttk.Style()
+
+                if current_style.theme_use() != previous_theme:
+                    current_style.theme_use(previous_theme)
+
+        tree.bind(
+            "<Destroy>",
+            restore_notification_theme,
+            add="+"
+        )
+
+        # ====================================================
+        # NOTIFICATION ROWS
+        # ====================================================
+
+        tree.tag_configure(
+            "even_row",
+            background="#10213B",
+            foreground="#F4F8FF"
+        )
+
+        tree.tag_configure(
+            "odd_row",
+            background="#1A304E",
+            foreground="#F4F8FF"
+        )
+
+        for index, row in enumerate(rows):
+            row_tag = (
+                "even_row"
+                if index % 2 == 0
+                else "odd_row"
+            )
+
             tree.insert(
                 "",
                 "end",
@@ -9138,21 +11914,40 @@ class App(ctk.CTk):
                     row[3],
                     "Read" if bool(row[4]) else "Unread",
                     str(row[5])[:19]
-                )
+                ),
+                tags=(row_tag,)
             )
+
+        # ====================================================
+        # ACTION BUTTONS
+        # ====================================================
 
         actions = ctk.CTkFrame(
             page,
             fg_color="transparent"
         )
-        actions.pack(pady=12)
+        actions.pack(
+            fill="x",
+            padx=20,
+            pady=(8, 18)
+        )
+
+        button_group = ctk.CTkFrame(
+            actions,
+            fg_color="transparent"
+        )
+        button_group.pack(anchor="center")
+
+        # ====================================================
+        # ORIGINAL MARK SELECTED FUNCTION
+        # ====================================================
 
         def mark_selected():
             def action():
                 selected = tree.selection()
 
                 if not selected:
-                    messagebox.showwarning(
+                    self.show_ok(
                         "Select Notification",
                         "Please select a notification."
                     )
@@ -9173,6 +11968,10 @@ class App(ctk.CTk):
 
             self.run(action)
 
+        # ====================================================
+        # ORIGINAL MARK ALL FUNCTION
+        # ====================================================
+
         def mark_all():
             def action():
                 self.db.mark_all_notifications_read()
@@ -9180,21 +11979,37 @@ class App(ctk.CTk):
 
             self.run(action)
 
-        self.button(
-            actions,
-            "Mark Selected as Read",
-            mark_selected,
-            width=200
+        # ====================================================
+        # BUTTON DESIGN
+        # ====================================================
+
+        ctk.CTkButton(
+            button_group,
+            text="✓  Mark Selected as Read",
+            command=mark_selected,
+            width=245,
+            height=46,
+            corner_radius=10,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold")
         ).pack(
             side="left",
             padx=8
         )
 
-        self.button(
-            actions,
-            "Mark All as Read",
-            mark_all,
-            width=180
+        ctk.CTkButton(
+            button_group,
+            text="✓  Mark All as Read",
+            command=mark_all,
+            width=220,
+            height=46,
+            corner_radius=10,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold")
         ).pack(
             side="left",
             padx=8
@@ -9553,7 +12368,7 @@ class App(ctk.CTk):
                 )
 
             except Exception as exc:
-                messagebox.showerror(
+                self.show_ok(
                     "Customer Search Error",
                     str(exc)
                 )
@@ -9767,21 +12582,21 @@ class App(ctk.CTk):
             ).strip()
 
             if not title or not message:
-                messagebox.showwarning(
+                self.show_ok(
                     "Missing Information",
                     "Please enter a title and message."
                 )
                 return
 
             if len(title) > 150:
-                messagebox.showwarning(
+                self.show_ok(
                     "Invalid Title",
                     "Title cannot exceed 150 characters."
                 )
                 return
 
             if len(message) > 1000:
-                messagebox.showwarning(
+                self.show_ok(
                     "Invalid Message",
                     "Message cannot exceed 1000 characters."
                 )
@@ -9795,7 +12610,7 @@ class App(ctk.CTk):
                 customer_id = selected_customer["id"]
 
                 if customer_id is None:
-                    messagebox.showwarning(
+                    self.show_ok(
                         "Select Customer",
                         "Please select a customer from search results."
                     )
@@ -9805,7 +12620,7 @@ class App(ctk.CTk):
                     selected_customer["phone"]
                 )
 
-            confirmed = messagebox.askyesno(
+            confirmed = self.ask_yes_no(
                 "Confirm Announcement",
                 (
                     f"Recipient: {recipient_text}\n\n"
@@ -9824,7 +12639,7 @@ class App(ctk.CTk):
                     customer_id=customer_id
                 )
 
-                messagebox.showinfo(
+                self.show_ok(
                     "Announcement Sent",
                     (
                         "Announcement sent successfully.\n"
@@ -9836,7 +12651,7 @@ class App(ctk.CTk):
                 message_text.delete("1.0", "end")
 
             except Exception as exc:
-                messagebox.showerror(
+                self.show_ok(
                     "Announcement Error",
                     str(exc)
                 )

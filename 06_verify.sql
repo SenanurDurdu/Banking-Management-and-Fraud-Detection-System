@@ -451,7 +451,7 @@ END;
 GO
 
 
-/******************************************************/
+/*ALL DATA VIEWS*/
 
 SELECT * FROM FraudRules;
 SELECT * FROM Users;
@@ -465,6 +465,7 @@ SELECT * FROM CreditCardApplications;
 SELECT * FROM CreditCards;
 SELECT * FROM CreditCardTransactions;
 
+/* DATA COUNT IN TABLES*/
 
 SELECT 'Customers' AS TableName, COUNT(*) AS RecordCount FROM dbo.Customers
 UNION ALL
@@ -481,15 +482,14 @@ UNION ALL
 SELECT 'AuditLogs', COUNT(*) FROM dbo.AuditLogs
 UNION ALL
 SELECT 'Notifications', COUNT(*) FROM dbo.Notifications
-UNION ALL 
+UNION ALL
 SELECT 'CreditCards', COUNT(*) FROM dbo.CreditCards
 UNION ALL
 SELECT 'CreditCardsApplications', COUNT(*) FROM dbo.CreditCardApplications
 UNION ALL
 SELECT 'CreditCardTransactions', COUNT(*) FROM dbo.CreditCardTransactions;
 
-
-/* USE BankingFraudDB;
+/*USE BankingFraudDB;
 GO
 
 SET XACT_ABORT ON;
