@@ -1,424 +1,587 @@
-
 -- ============================================================
 -- NG BANK
 -- FILE: 06_verify.sql
--- PURPOSE: Verify a fresh database installation
--- SOURCE: current_database_schema.sql
--- TARGET: BankingFraudDB
---
--- RUN AFTER:
--- 01_schema.sql
--- 02_constraints_indexes.sql
--- 03_seed_data.sql
--- 04_views.sql
--- 05_procedures.sql
---
+-- DATABASE: BankingFraudDB
 -- READ-ONLY VERIFICATION
--- No application tables or records are modified.
+-- EXPECTED: 20 TABLES, 9 VIEWS,
+--           10 PROCEDURES, 5 TRIGGERS
 -- ============================================================
 
-USE [BankingFraudDB];
+USE BankingFraudDB_Test;
 GO
 
 SET NOCOUNT ON;
 GO
 
 -- ============================================================
--- 1. PREPARE VERIFICATION RESULTS
+-- 1. EXPECTED DATABASE OBJECTS
 -- ============================================================
 
-IF OBJECT_ID('tempdb..#VerificationResults') IS NOT NULL
-    DROP TABLE #VerificationResults;
-
-CREATE TABLE #VerificationResults
+DECLARE @ExpectedTables TABLE
 (
-    CheckName NVARCHAR(100) NOT NULL,
-    ExpectedCount INT NOT NULL,
-    ActualCount INT NOT NULL,
-    Result VARCHAR(10) NOT NULL
+    TableName SYSNAME PRIMARY KEY
+);
+
+INSERT INTO @ExpectedTables
+VALUES
+(N'Customers'),
+(N'Users'),
+(N'Accounts'),
+(N'Transactions'),
+(N'FraudRules'),
+(N'FraudAlerts'),
+(N'AuditLogs'),
+(N'Notifications'),
+(N'CreditCardApplications'),
+(N'CreditCards'),
+(N'CreditCardTransactions'),
+(N'CustomerAddresses'),
+(N'CustomerContacts'),
+(N'Beneficiaries'),
+(N'AccountStatusHistory'),
+(N'TransactionNotes'),
+(N'FraudAlertReviewHistory'),
+(N'CreditCardBillingSettings'),
+(N'AccountDailyBalances'),
+(N'FraudRiskAssessments');
+
+DECLARE @ExpectedViews TABLE
+(
+    ViewName SYSNAME PRIMARY KEY
+);
+
+INSERT INTO @ExpectedViews
+VALUES
+(N'vw_AccountSummary'),
+(N'vw_DailyTransactionStats'),
+(N'vw_FraudTransactions'),
+(N'vw_FraudAlertDetails'),
+(N'vw_SuspiciousTransactions'),
+(N'vw_CustomerRiskSummary'),
+(N'vw_CustomerFraudReviews'),
+(N'vw_AccountDailyBalanceDetails'),
+(N'vw_FraudRiskAssessmentDetails');
+
+DECLARE @ExpectedProcedures TABLE
+(
+    ProcedureName SYSNAME PRIMARY KEY
+);
+
+INSERT INTO @ExpectedProcedures
+VALUES
+(N'sp_ExecuteBankTransaction'),
+(N'sp_Deposit'),
+(N'sp_Withdraw'),
+(N'sp_Transfer'),
+(N'sp_ExecuteCreditCardTransaction'),
+(N'sp_CreditCardPurchase'),
+(N'sp_CreditCardCashAdvance'),
+(N'sp_CreditCardPayment'),
+(N'sp_ScanFraud'),
+(N'sp_ScanCreditCardFraud');
+
+DECLARE @ExpectedTriggers TABLE
+(
+    TriggerName SYSNAME PRIMARY KEY,
+    ParentTable SYSNAME NOT NULL
+);
+
+INSERT INTO @ExpectedTriggers
+VALUES
+(N'trg_Accounts_StatusHistory',N'Accounts'),
+(N'trg_FraudAlerts_ReviewHistory',N'FraudAlerts'),
+(N'trg_CreditCards_BillingSettings',N'CreditCards'),
+(N'trg_Accounts_DailyBalances',N'Accounts'),
+(N'trg_FraudAlerts_RiskAssessments',N'FraudAlerts');
+
+DECLARE @Results TABLE
+(
+    CheckName NVARCHAR(150),
+    ExpectedCount INT,
+    ActualCount INT,
+    Result VARCHAR(10)
 );
 
 -- ============================================================
--- 2. VERIFY ALL 11 TABLES
+-- 2. TABLE COUNT
 -- ============================================================
 
-;WITH ExpectedTables AS
+DECLARE @TableCount INT;
+
+SELECT @TableCount = COUNT(*)
+FROM sys.tables
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND is_ms_shipped = 0;
+
+INSERT INTO @Results
+VALUES
 (
-    SELECT TableName
-    FROM (VALUES
-        (N'Customers'),
-        (N'Users'),
-        (N'Accounts'),
-        (N'Transactions'),
-        (N'FraudRules'),
-        (N'FraudAlerts'),
-        (N'AuditLogs'),
-        (N'Notifications'),
-        (N'CreditCardApplications'),
-        (N'CreditCards'),
-        (N'CreditCardTransactions')
-    ) AS t(TableName)
-)
+    N'Total dbo Tables',
+    20,
+    @TableCount,
+    CASE WHEN @TableCount = 20
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 3. REQUIRED TABLES
+-- ============================================================
+
 SELECT
     e.TableName AS MissingTable
-FROM ExpectedTables AS e
-WHERE OBJECT_ID(
-    N'dbo.' + e.TableName,
-    N'U'
-) IS NULL;
+FROM @ExpectedTables AS e
+WHERE OBJECT_ID(N'dbo.' + e.TableName,N'U') IS NULL;
 
-INSERT INTO #VerificationResults
-SELECT
-    N'Tables',
-    11,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 11
-         THEN 'PASS' ELSE 'FAIL' END
-FROM sys.tables
-WHERE schema_id = SCHEMA_ID(N'dbo');
+DECLARE @RequiredTableCount INT;
 
--- ============================================================
--- 3. VERIFY ALL 7 VIEWS
--- ============================================================
+SELECT @RequiredTableCount = COUNT(*)
+FROM @ExpectedTables AS e
+WHERE OBJECT_ID(N'dbo.' + e.TableName,N'U') IS NOT NULL;
 
-;WITH ExpectedViews AS
+INSERT INTO @Results
+VALUES
 (
-    SELECT ViewName
-    FROM (VALUES
-        (N'vw_AccountSummary'),
-        (N'vw_DailyTransactionStats'),
-        (N'vw_FraudTransactions'),
-        (N'vw_FraudAlertDetails'),
-        (N'vw_SuspiciousTransactions'),
-        (N'vw_CustomerRiskSummary'),
-        (N'vw_CustomerFraudReviews')
-    ) AS v(ViewName)
-)
+    N'Required Tables',
+    20,
+    @RequiredTableCount,
+    CASE WHEN @RequiredTableCount = 20
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 4. REQUIRED VIEWS
+-- ============================================================
+
 SELECT
     e.ViewName AS MissingView
-FROM ExpectedViews AS e
-WHERE OBJECT_ID(
-    N'dbo.' + e.ViewName,
-    N'V'
-) IS NULL;
+FROM @ExpectedViews AS e
+WHERE OBJECT_ID(N'dbo.' + e.ViewName,N'V') IS NULL;
 
-INSERT INTO #VerificationResults
-SELECT
-    N'Views',
-    7,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 7
-         THEN 'PASS' ELSE 'FAIL' END
-FROM sys.views
-WHERE schema_id = SCHEMA_ID(N'dbo');
+DECLARE @ViewCount INT;
 
--- ============================================================
--- 4. VERIFY ALL 10 STORED PROCEDURES
--- ============================================================
+SELECT @ViewCount = COUNT(*)
+FROM @ExpectedViews AS e
+WHERE OBJECT_ID(N'dbo.' + e.ViewName,N'V') IS NOT NULL;
 
-;WITH ExpectedProcedures AS
+INSERT INTO @Results
+VALUES
 (
-    SELECT ProcedureName
-    FROM (VALUES
-        (N'sp_ExecuteBankTransaction'),
-        (N'sp_Deposit'),
-        (N'sp_Withdraw'),
-        (N'sp_Transfer'),
-        (N'sp_ExecuteCreditCardTransaction'),
-        (N'sp_CreditCardPurchase'),
-        (N'sp_CreditCardCashAdvance'),
-        (N'sp_CreditCardPayment'),
-        (N'sp_ScanFraud'),
-        (N'sp_ScanCreditCardFraud')
-    ) AS p(ProcedureName)
-)
+    N'Required Views',
+    9,
+    @ViewCount,
+    CASE WHEN @ViewCount = 9
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 5. REQUIRED PROCEDURES
+-- ============================================================
+
 SELECT
     e.ProcedureName AS MissingProcedure
-FROM ExpectedProcedures AS e
-WHERE OBJECT_ID(
-    N'dbo.' + e.ProcedureName,
-    N'P'
-) IS NULL;
+FROM @ExpectedProcedures AS e
+WHERE OBJECT_ID(N'dbo.' + e.ProcedureName,N'P') IS NULL;
 
-INSERT INTO #VerificationResults
-SELECT
-    N'Stored Procedures',
+DECLARE @ProcedureCount INT;
+
+SELECT @ProcedureCount = COUNT(*)
+FROM @ExpectedProcedures AS e
+WHERE OBJECT_ID(N'dbo.' + e.ProcedureName,N'P') IS NOT NULL;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Required Procedures',
     10,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 10
+    @ProcedureCount,
+    CASE WHEN @ProcedureCount = 10
          THEN 'PASS' ELSE 'FAIL' END
-FROM sys.procedures
-WHERE schema_id = SCHEMA_ID(N'dbo');
-
--- ============================================================
--- 5. VERIFY FOREIGN KEYS
--- ============================================================
-
-SELECT
-    fk.name AS ForeignKeyName,
-    OBJECT_SCHEMA_NAME(fk.parent_object_id)
-        AS SourceSchema,
-    OBJECT_NAME(fk.parent_object_id)
-        AS SourceTable,
-    OBJECT_NAME(fk.referenced_object_id)
-        AS TargetTable,
-    fk.is_disabled AS IsDisabled,
-    fk.is_not_trusted AS IsNotTrusted
-FROM sys.foreign_keys AS fk
-WHERE OBJECT_SCHEMA_NAME(fk.parent_object_id) = N'dbo'
-ORDER BY SourceTable, ForeignKeyName;
-
-INSERT INTO #VerificationResults
-SELECT
-    N'Foreign Keys',
-    17,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 17
-         THEN 'PASS' ELSE 'FAIL' END
-FROM sys.foreign_keys AS fk
-WHERE OBJECT_SCHEMA_NAME(fk.parent_object_id) = N'dbo';
-
--- ============================================================
--- 6. VERIFY THE 17 EXPLICIT INDEXES
---
--- Exclude indexes automatically created by
--- PRIMARY KEY and UNIQUE constraints.
--- ============================================================
-
-;WITH ExpectedIndexes AS
-(
-    SELECT
-        TableName,
-        IndexName
-    FROM (VALUES
-        (N'Accounts', N'IX_Accounts_CustomerID'),
-        (N'AuditLogs', N'IX_AuditLogs_UserID'),
-
-        (N'CreditCardApplications',
-         N'IX_CreditCardApplications_Customer'),
-
-        (N'CreditCards',
-         N'IX_CreditCards_Customer'),
-
-        (N'CreditCardTransactions',
-         N'IX_CreditCardTransactions_Card'),
-
-        (N'CreditCardTransactions',
-         N'UX_CreditCardTransactions_BankTransaction'),
-
-        (N'Customers', N'UX_Customers_Phone'),
-
-        (N'FraudAlerts',
-         N'IX_FraudAlerts_ReviewStatus'),
-
-        (N'FraudAlerts',
-         N'IX_FraudAlerts_TransactionID'),
-
-        (N'FraudAlerts',
-         N'UX_FraudAlerts_BankRule'),
-
-        (N'FraudAlerts',
-         N'UX_FraudAlerts_CardRule'),
-
-        (N'Notifications',
-         N'IX_Notifications_Customer'),
-
-        (N'Transactions',
-         N'IX_Transactions_Date'),
-
-        (N'Transactions',
-         N'IX_Transactions_FromAccount'),
-
-        (N'Transactions',
-         N'IX_Transactions_ToAccount'),
-
-        (N'Users',
-         N'UX_Users_CustomerID'),
-
-        (N'Users',
-         N'UX_Users_Email')
-    ) AS x(TableName, IndexName)
-)
-SELECT
-    e.TableName,
-    e.IndexName AS MissingIndex
-FROM ExpectedIndexes AS e
-WHERE NOT EXISTS
-(
-    SELECT 1
-    FROM sys.indexes AS i
-    WHERE i.object_id =
-        OBJECT_ID(N'dbo.' + e.TableName)
-      AND i.name = e.IndexName
-      AND i.is_disabled = 0
-);
-
-INSERT INTO #VerificationResults
-SELECT
-    N'Explicit Indexes',
-    17,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 17
-         THEN 'PASS' ELSE 'FAIL' END
-FROM sys.indexes AS i
-INNER JOIN sys.tables AS t
-    ON t.object_id = i.object_id
-WHERE t.schema_id = SCHEMA_ID(N'dbo')
-  AND i.index_id > 0
-  AND i.is_primary_key = 0
-  AND i.is_unique_constraint = 0;
-
--- ============================================================
--- 7. VERIFY REQUIRED FRAUD RULES
--- ============================================================
-
-;WITH ExpectedRules AS
-(
-    SELECT RuleType
-    FROM (VALUES
-        ('HighAmount'),
-        ('Frequent'),
-        ('RepeatedAmount')
-    ) AS r(RuleType)
-)
-SELECT
-    e.RuleType AS MissingRule
-FROM ExpectedRules AS e
-WHERE NOT EXISTS
-(
-    SELECT 1
-    FROM dbo.FraudRules AS f
-    WHERE f.RuleType = e.RuleType
-);
-
-INSERT INTO #VerificationResults
-SELECT
-    N'Fraud Rule Types',
-    3,
-    COUNT(DISTINCT RuleType),
-    CASE WHEN COUNT(DISTINCT RuleType) = 3
-         THEN 'PASS' ELSE 'FAIL' END
-FROM dbo.FraudRules
-WHERE RuleType IN
-(
-    'HighAmount',
-    'Frequent',
-    'RepeatedAmount'
 );
 
 -- ============================================================
--- 8. VERIFY IMPORTANT COLUMNS
+-- 6. REQUIRED ENABLED TRIGGERS
 -- ============================================================
 
-;WITH RequiredColumns AS
-(
-    SELECT TableName, ColumnName
-    FROM (VALUES
-        (N'Accounts', N'IsFrozen'),
-        (N'Accounts', N'Balance'),
-        (N'Accounts', N'CustomerID'),
-
-        (N'FraudAlerts', N'TransactionID'),
-        (N'FraudAlerts', N'CardTransactionID'),
-        (N'FraudAlerts', N'ReviewStatus'),
-        (N'FraudAlerts', N'ReviewedByUserID'),
-
-        (N'CreditCards', N'LinkedAccountID'),
-        (N'CreditCards', N'OutstandingBalance'),
-        (N'CreditCards', N'CardStatus'),
-
-        (N'CreditCardTransactions',
-         N'BankTransactionID'),
-
-        (N'CreditCardTransactions',
-         N'TransactionStatus')
-    ) AS c(TableName, ColumnName)
-)
 SELECT
-    r.TableName,
-    r.ColumnName AS MissingColumn
-FROM RequiredColumns AS r
-WHERE NOT EXISTS
+    e.TriggerName,
+    e.ParentTable,
+    CASE
+        WHEN t.object_id IS NULL THEN 'MISSING'
+        WHEN t.is_disabled = 1 THEN 'DISABLED'
+        ELSE 'ENABLED'
+    END AS TriggerStatus
+FROM @ExpectedTriggers AS e
+LEFT JOIN sys.triggers AS t
+    ON t.name = e.TriggerName
+   AND t.parent_id = OBJECT_ID(N'dbo.' + e.ParentTable);
+
+DECLARE @TriggerCount INT;
+
+SELECT @TriggerCount = COUNT(*)
+FROM @ExpectedTriggers AS e
+INNER JOIN sys.triggers AS t
+    ON t.name = e.TriggerName
+   AND t.parent_id = OBJECT_ID(N'dbo.' + e.ParentTable)
+   AND t.is_disabled = 0;
+
+INSERT INTO @Results
+VALUES
 (
-    SELECT 1
-    FROM sys.columns AS c
-    WHERE c.object_id =
-        OBJECT_ID(N'dbo.' + r.TableName)
-      AND c.name = r.ColumnName
+    N'Required Enabled Triggers',
+    5,
+    @TriggerCount,
+    CASE WHEN @TriggerCount = 5
+         THEN 'PASS' ELSE 'FAIL' END
 );
 
 -- ============================================================
--- 9. VERIFY IMPORTANT NULLABILITY RULES
+-- 7. OLD TABLES MUST NOT EXIST
 -- ============================================================
 
-SELECT
-    t.name AS TableName,
-    c.name AS ColumnName,
-    c.is_nullable AS IsNullable
-FROM sys.columns AS c
-INNER JOIN sys.tables AS t
-    ON t.object_id = c.object_id
+DECLARE @OldTableCount INT = 0;
+
+IF OBJECT_ID(N'dbo.CreditCardStatements',N'U') IS NOT NULL
+    SET @OldTableCount = @OldTableCount + 1;
+
+IF OBJECT_ID(N'dbo.CreditCardStatementItems',N'U') IS NOT NULL
+    SET @OldTableCount = @OldTableCount + 1;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Old Statement Tables Remaining',
+    0,
+    @OldTableCount,
+    CASE WHEN @OldTableCount = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 8. NEW TABLE FOREIGN KEYS
+-- ============================================================
+
+DECLARE @NewFKCount INT;
+
+SELECT @NewFKCount = COUNT(*)
+FROM sys.foreign_keys
 WHERE
     (
-        t.name = N'FraudAlerts'
-        AND c.name IN
-        (
-            N'TransactionID',
-            N'CardTransactionID',
-            N'ReviewedByUserID'
-        )
+        parent_object_id =
+            OBJECT_ID(N'dbo.AccountDailyBalances')
+        AND referenced_object_id =
+            OBJECT_ID(N'dbo.Accounts')
     )
     OR
     (
-        t.name = N'CreditCardTransactions'
-        AND c.name = N'BankTransactionID'
-    )
-ORDER BY t.name, c.name;
+        parent_object_id =
+            OBJECT_ID(N'dbo.FraudRiskAssessments')
+        AND referenced_object_id =
+            OBJECT_ID(N'dbo.FraudAlerts')
+    );
 
--- ============================================================
--- 10. CHECK DISABLED OR UNTRUSTED CONSTRAINTS
--- ============================================================
-
-SELECT
-    N'Foreign Key' AS ConstraintType,
-    fk.name AS ConstraintName,
-    OBJECT_NAME(fk.parent_object_id) AS TableName,
-    fk.is_disabled AS IsDisabled,
-    fk.is_not_trusted AS IsNotTrusted
-FROM sys.foreign_keys AS fk
-WHERE fk.is_disabled = 1
-   OR fk.is_not_trusted = 1
-
-UNION ALL
-
-SELECT
-    N'Check Constraint',
-    cc.name,
-    OBJECT_NAME(cc.parent_object_id),
-    cc.is_disabled,
-    cc.is_not_trusted
-FROM sys.check_constraints AS cc
-WHERE cc.is_disabled = 1
-   OR cc.is_not_trusted = 1;
-
--- ============================================================
--- 11. VERIFY TRIGGER COUNT
--- ============================================================
-
-INSERT INTO #VerificationResults
-SELECT
-    N'Triggers',
-    0,
-    COUNT(*),
-    CASE WHEN COUNT(*) = 0
+INSERT INTO @Results
+VALUES
+(
+    N'New Table Foreign Keys',
+    2,
+    @NewFKCount,
+    CASE WHEN @NewFKCount = 2
          THEN 'PASS' ELSE 'FAIL' END
-FROM sys.triggers AS tr
-INNER JOIN sys.objects AS o
-    ON o.object_id = tr.parent_id
-WHERE OBJECT_SCHEMA_NAME(o.object_id) = N'dbo';
+);
 
 -- ============================================================
--- 12. FINAL VERIFICATION SUMMARY
+-- 9. REQUIRED NEW INDEXES
+-- ============================================================
+
+DECLARE @NewIndexCount INT;
+
+SELECT @NewIndexCount = COUNT(*)
+FROM sys.indexes
+WHERE
+    (
+        object_id = OBJECT_ID(N'dbo.AccountDailyBalances')
+        AND name = N'IX_AccountDailyBalances_Date'
+        AND is_disabled = 0
+    )
+    OR
+    (
+        object_id = OBJECT_ID(N'dbo.FraudRiskAssessments')
+        AND name = N'IX_FraudRiskAssessments_Level'
+        AND is_disabled = 0
+    );
+
+INSERT INTO @Results
+VALUES
+(
+    N'New Table Indexes',
+    2,
+    @NewIndexCount,
+    CASE WHEN @NewIndexCount = 2
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 10. ACTIVE FRAUD RULES
+-- ============================================================
+
+DECLARE @FraudRuleCount INT;
+
+SELECT @FraudRuleCount = COUNT(DISTINCT RuleType)
+FROM dbo.FraudRules
+WHERE IsActive = 1
+  AND RuleType IN
+  (
+      'HighAmount',
+      'Frequent',
+      'RepeatedAmount'
+  );
+
+INSERT INTO @Results
+VALUES
+(
+    N'Active Fraud Rule Types',
+    3,
+    @FraudRuleCount,
+    CASE WHEN @FraudRuleCount = 3
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 11. ACCOUNT BALANCE COVERAGE
+-- ============================================================
+
+DECLARE @MissingDailyBalances INT = NULL;
+
+IF OBJECT_ID(N'dbo.AccountDailyBalances',N'U') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql
+        N'
+        SELECT @Missing = COUNT(*)
+        FROM dbo.Accounts AS a
+        WHERE NOT EXISTS
+        (
+            SELECT 1
+            FROM dbo.AccountDailyBalances AS adb
+            WHERE adb.AccountID = a.AccountID
+              AND adb.BalanceDate =
+                  CONVERT(DATE,SYSDATETIME())
+        );
+        ',
+        N'@Missing INT OUTPUT',
+        @Missing = @MissingDailyBalances OUTPUT;
+END;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Accounts Missing Today Balance',
+    0,
+    ISNULL(@MissingDailyBalances,-1),
+    CASE WHEN @MissingDailyBalances = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 12. FRAUD ASSESSMENT COVERAGE
+-- ============================================================
+
+DECLARE @MissingAssessments INT = NULL;
+
+IF OBJECT_ID(N'dbo.FraudRiskAssessments',N'U') IS NOT NULL
+BEGIN
+    EXEC sys.sp_executesql
+        N'
+        SELECT @Missing = COUNT(*)
+        FROM dbo.FraudAlerts AS fa
+        WHERE NOT EXISTS
+        (
+            SELECT 1
+            FROM dbo.FraudRiskAssessments AS fra
+            WHERE fra.AlertID = fa.AlertID
+        );
+        ',
+        N'@Missing INT OUTPUT',
+        @Missing = @MissingAssessments OUTPUT;
+END;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Fraud Alerts Missing Assessment',
+    0,
+    ISNULL(@MissingAssessments,-1),
+    CASE WHEN @MissingAssessments = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 13. DISABLED OR UNTRUSTED CONSTRAINTS
+-- ============================================================
+
+DECLARE @BadConstraintCount INT;
+
+SELECT @BadConstraintCount =
+(
+    SELECT COUNT(*)
+    FROM sys.foreign_keys
+    WHERE OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
+      AND (is_disabled = 1 OR is_not_trusted = 1)
+)
++
+(
+    SELECT COUNT(*)
+    FROM sys.check_constraints
+    WHERE OBJECT_SCHEMA_NAME(parent_object_id) = N'dbo'
+      AND (is_disabled = 1 OR is_not_trusted = 1)
+);
+
+INSERT INTO @Results
+VALUES
+(
+    N'Disabled Or Untrusted Constraints',
+    0,
+    @BadConstraintCount,
+    CASE WHEN @BadConstraintCount = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 14. ALL TABLE RECORD COUNTS
+-- Uses metadata so missing tables do not break verification.
+-- ============================================================
+
+IF OBJECT_ID('tempdb..#TableCounts') IS NOT NULL
+    DROP TABLE #TableCounts;
+
+SELECT
+    t.name AS TableName,
+    CONVERT(BIGINT,ISNULL(SUM(ps.row_count),0))
+        AS RecordCount
+INTO #TableCounts
+FROM sys.tables AS t
+LEFT JOIN sys.dm_db_partition_stats AS ps
+    ON ps.object_id = t.object_id
+   AND ps.index_id IN (0,1)
+WHERE t.schema_id = SCHEMA_ID(N'dbo')
+  AND t.is_ms_shipped = 0
+GROUP BY t.name;
+
+SELECT
+    e.TableName,
+    ISNULL(tc.RecordCount,0) AS RecordCount,
+    CASE
+        WHEN tc.TableName IS NULL THEN 'MISSING'
+        WHEN tc.RecordCount = 0 THEN 'EMPTY'
+        ELSE 'HAS DATA'
+    END AS DataStatus
+FROM @ExpectedTables AS e
+LEFT JOIN #TableCounts AS tc
+    ON tc.TableName = e.TableName
+ORDER BY e.TableName;
+
+-- ============================================================
+-- 15. EMPTY TABLES
+-- ============================================================
+
+SELECT
+    e.TableName AS EmptyOrMissingTable,
+    ISNULL(tc.RecordCount,0) AS RecordCount
+FROM @ExpectedTables AS e
+LEFT JOIN #TableCounts AS tc
+    ON tc.TableName = e.TableName
+WHERE ISNULL(tc.RecordCount,0) = 0
+ORDER BY e.TableName;
+
+DECLARE @NonEmptyTableCount INT;
+
+SELECT @NonEmptyTableCount = COUNT(*)
+FROM @ExpectedTables AS e
+INNER JOIN #TableCounts AS tc
+    ON tc.TableName = e.TableName
+WHERE tc.RecordCount > 0;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Tables Containing Data',
+    20,
+    @NonEmptyTableCount,
+    CASE WHEN @NonEmptyTableCount = 20
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 16. INVALID ACCOUNT BALANCES
+-- ============================================================
+
+DECLARE @NegativeAccountCount INT;
+
+SELECT @NegativeAccountCount = COUNT(*)
+FROM dbo.Accounts
+WHERE Balance < 0;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Negative Account Balances',
+    0,
+    @NegativeAccountCount,
+    CASE WHEN @NegativeAccountCount = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 17. INVALID CREDIT CARD BALANCES
+-- ============================================================
+
+DECLARE @InvalidCardCount INT;
+
+SELECT @InvalidCardCount = COUNT(*)
+FROM dbo.CreditCards
+WHERE OutstandingBalance < 0
+   OR OutstandingBalance > CreditLimit;
+
+INSERT INTO @Results
+VALUES
+(
+    N'Invalid Credit Card Balances',
+    0,
+    @InvalidCardCount,
+    CASE WHEN @InvalidCardCount = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 18. INVALID FRAUD ALERT REFERENCES
+-- ============================================================
+
+DECLARE @InvalidAlertCount INT;
+
+SELECT @InvalidAlertCount = COUNT(*)
+FROM dbo.FraudAlerts
+WHERE
+    (
+        TransactionID IS NULL
+        AND CardTransactionID IS NULL
+    )
+    OR
+    (
+        TransactionID IS NOT NULL
+        AND CardTransactionID IS NOT NULL
+    );
+
+INSERT INTO @Results
+VALUES
+(
+    N'Invalid Fraud Alert References',
+    0,
+    @InvalidAlertCount,
+    CASE WHEN @InvalidAlertCount = 0
+         THEN 'PASS' ELSE 'FAIL' END
+);
+
+-- ============================================================
+-- 19. FINAL VERIFICATION REPORT
 -- ============================================================
 
 SELECT
@@ -426,70 +589,218 @@ SELECT
     ExpectedCount,
     ActualCount,
     Result
-FROM #VerificationResults
-ORDER BY CheckName;
+FROM @Results
+ORDER BY
+    CASE WHEN Result = 'FAIL' THEN 0 ELSE 1 END,
+    CheckName;
 
 -- ============================================================
--- 13. FINAL STATUS
+-- 20. FINAL STATUS
 -- ============================================================
 
-IF EXISTS
-(
-    SELECT 1
-    FROM #VerificationResults
-    WHERE Result = 'FAIL'
-)
-BEGIN
-    PRINT 'NG BANK VERIFICATION FAILED.';
-    PRINT 'Review missing objects and counts.';
-END
-ELSE
-BEGIN
-    PRINT 'NG BANK BASIC VERIFICATION PASSED.';
-    PRINT 'All expected object counts were found.';
-END;
+DECLARE @PassedChecks INT;
+DECLARE @FailedChecks INT;
+
+SELECT
+    @PassedChecks =
+        SUM(CASE WHEN Result = 'PASS' THEN 1 ELSE 0 END),
+    @FailedChecks =
+        SUM(CASE WHEN Result = 'FAIL' THEN 1 ELSE 0 END)
+FROM @Results;
+
+SELECT
+    @PassedChecks AS PassedChecks,
+    @FailedChecks AS FailedChecks,
+    CASE
+        WHEN @FailedChecks = 0
+            THEN 'NG BANK VERIFICATION PASSED'
+        ELSE 'NG BANK VERIFICATION FAILED'
+    END AS FinalStatus;
+
+-- ============================================================
+-- 21. ALL APPLICATION TABLES
+-- ============================================================
+
+SELECT
+    name AS TableName
+FROM sys.tables
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND is_ms_shipped = 0
+ORDER BY name;
+
+-- ============================================================
+-- 22. ALL PROJECT VIEWS
+-- ============================================================
+
+SELECT
+    name AS ViewName
+FROM sys.views
+WHERE schema_id = SCHEMA_ID(N'dbo')
+ORDER BY name;
+
+-- ============================================================
+-- 23. ALL PROJECT PROCEDURES
+-- ============================================================
+
+SELECT
+    name AS ProcedureName
+FROM sys.procedures
+WHERE schema_id = SCHEMA_ID(N'dbo')
+ORDER BY name;
+
+-- ============================================================
+-- 24. ALL PROJECT TRIGGERS
+-- ============================================================
+
+SELECT
+    t.name AS TriggerName,
+    OBJECT_NAME(t.parent_id) AS ParentTable,
+    t.is_disabled AS IsDisabled
+FROM sys.triggers AS t
+WHERE t.parent_class = 1
+ORDER BY t.name;
+
+PRINT '06_verify.sql completed.';
+GO
+
+-- ============================================================
+-- VERIFY ACCOUNT TRIGGERS
+-- ============================================================
+
+SELECT
+    t.name AS TriggerName,
+    t.is_disabled AS IsDisabled
+FROM sys.triggers AS t
+WHERE t.parent_id = OBJECT_ID(N'dbo.Accounts')
+ORDER BY t.name;
+GO
+
+/* ============================================================
+   ALL DATA VIEWS - CURRENT 20 TABLES
+   ============================================================ */
+
+SELECT * FROM dbo.FraudRules;
+SELECT * FROM dbo.Users;
+SELECT * FROM dbo.Accounts;
+SELECT * FROM dbo.Transactions;
+SELECT * FROM dbo.FraudAlerts;
+SELECT * FROM dbo.AuditLogs;
+SELECT * FROM dbo.Customers;
+SELECT * FROM dbo.Notifications;
+SELECT * FROM dbo.CreditCardApplications;
+SELECT * FROM dbo.CreditCards;
+SELECT * FROM dbo.CreditCardTransactions;
+SELECT * FROM dbo.CustomerAddresses;
+SELECT * FROM dbo.CustomerContacts;
+SELECT * FROM dbo.Beneficiaries;
+SELECT * FROM dbo.AccountStatusHistory;
+SELECT * FROM dbo.TransactionNotes;
+SELECT * FROM dbo.FraudAlertReviewHistory;
+SELECT * FROM dbo.CreditCardBillingSettings;
+SELECT * FROM dbo.AccountDailyBalances;
+SELECT * FROM dbo.FraudRiskAssessments;
 GO
 
 
-/*ALL DATA VIEWS*/
+/* ============================================================
+   DATA COUNT IN TABLES - CURRENT 20 TABLES
+   ============================================================ */
 
-SELECT * FROM FraudRules;
-SELECT * FROM Users;
-SELECT * FROM Accounts;
-SELECT * FROM Transactions;
-SELECT * FROM FraudAlerts;
-SELECT * FROM AuditLogs;
-SELECT * FROM Customers;
-SELECT * FROM Notifications;
-SELECT * FROM CreditCardApplications;
-SELECT * FROM CreditCards;
-SELECT * FROM CreditCardTransactions;
+SELECT 'Customers' AS TableName, COUNT(*) AS RecordCount
+FROM dbo.Customers
 
-/* DATA COUNT IN TABLES*/
+UNION ALL
+SELECT 'Users', COUNT(*)
+FROM dbo.Users
 
-SELECT 'Customers' AS TableName, COUNT(*) AS RecordCount FROM dbo.Customers
 UNION ALL
-SELECT 'Users', COUNT(*) FROM dbo.Users
-UNION ALL
-SELECT 'Accounts', COUNT(*) FROM dbo.Accounts
-UNION ALL
-SELECT 'Transactions', COUNT(*) FROM dbo.Transactions
-UNION ALL
-SELECT 'FraudRules', COUNT(*) FROM dbo.FraudRules
-UNION ALL
-SELECT 'FraudAlerts', COUNT(*) FROM dbo.FraudAlerts
-UNION ALL
-SELECT 'AuditLogs', COUNT(*) FROM dbo.AuditLogs
-UNION ALL
-SELECT 'Notifications', COUNT(*) FROM dbo.Notifications
-UNION ALL
-SELECT 'CreditCards', COUNT(*) FROM dbo.CreditCards
-UNION ALL
-SELECT 'CreditCardsApplications', COUNT(*) FROM dbo.CreditCardApplications
-UNION ALL
-SELECT 'CreditCardTransactions', COUNT(*) FROM dbo.CreditCardTransactions;
+SELECT 'Accounts', COUNT(*)
+FROM dbo.Accounts
 
-/*USE BankingFraudDB;
+UNION ALL
+SELECT 'Transactions', COUNT(*)
+FROM dbo.Transactions
+
+UNION ALL
+SELECT 'FraudRules', COUNT(*)
+FROM dbo.FraudRules
+
+UNION ALL
+SELECT 'FraudAlerts', COUNT(*)
+FROM dbo.FraudAlerts
+
+UNION ALL
+SELECT 'AuditLogs', COUNT(*)
+FROM dbo.AuditLogs
+
+UNION ALL
+SELECT 'Notifications', COUNT(*)
+FROM dbo.Notifications
+
+UNION ALL
+SELECT 'CreditCards', COUNT(*)
+FROM dbo.CreditCards
+
+UNION ALL
+SELECT 'CreditCardApplications', COUNT(*)
+FROM dbo.CreditCardApplications
+
+UNION ALL
+SELECT 'CreditCardTransactions', COUNT(*)
+FROM dbo.CreditCardTransactions
+
+UNION ALL
+SELECT 'CustomerAddresses', COUNT(*)
+FROM dbo.CustomerAddresses
+
+UNION ALL
+SELECT 'CustomerContacts', COUNT(*)
+FROM dbo.CustomerContacts
+
+UNION ALL
+SELECT 'Beneficiaries', COUNT(*)
+FROM dbo.Beneficiaries
+
+UNION ALL
+SELECT 'AccountStatusHistory', COUNT(*)
+FROM dbo.AccountStatusHistory
+
+UNION ALL
+SELECT 'TransactionNotes', COUNT(*)
+FROM dbo.TransactionNotes
+
+UNION ALL
+SELECT 'FraudAlertReviewHistory', COUNT(*)
+FROM dbo.FraudAlertReviewHistory
+
+UNION ALL
+SELECT 'CreditCardBillingSettings', COUNT(*)
+FROM dbo.CreditCardBillingSettings
+
+UNION ALL
+SELECT 'AccountDailyBalances', COUNT(*)
+FROM dbo.AccountDailyBalances
+
+UNION ALL
+SELECT 'FraudRiskAssessments', COUNT(*)
+FROM dbo.FraudRiskAssessments;
+GO
+
+
+/* ============================================================
+   OPTIONAL: DELETE TEST DATA AND RESET IDENTITY COUNTERS
+
+   WARNING:
+   This section is COMMENTED OUT.
+   Do not activate it unless you intentionally want
+   to delete application data.
+
+   FraudRules are preserved.
+
+   CURRENT 20-TABLE STRUCTURE
+   ============================================================
+
+USE BankingFraudDB;
 GO
 
 SET XACT_ABORT ON;
@@ -499,31 +810,71 @@ BEGIN TRY
 
     -- Delete dependent records first
     DELETE FROM dbo.Notifications;
+    DELETE FROM dbo.FraudAlertReviewHistory;
+
+    -- New fraud assessment table
+    DELETE FROM dbo.FraudRiskAssessments;
+
     DELETE FROM dbo.FraudAlerts;
     DELETE FROM dbo.AuditLogs;
 
     -- Credit card tables
     DELETE FROM dbo.CreditCardTransactions;
+    DELETE FROM dbo.CreditCardBillingSettings;
     DELETE FROM dbo.CreditCards;
     DELETE FROM dbo.CreditCardApplications;
 
+    -- Transaction tables
+    DELETE FROM dbo.TransactionNotes;
     DELETE FROM dbo.Transactions;
-    DELETE FROM dbo.Users;
+
+    -- New daily balance table
+    DELETE FROM dbo.AccountDailyBalances;
+
+    -- Account tables
+    DELETE FROM dbo.AccountStatusHistory;
     DELETE FROM dbo.Accounts;
+
+    -- Customer tables
+    DELETE FROM dbo.Beneficiaries;
+    DELETE FROM dbo.CustomerAddresses;
+    DELETE FROM dbo.CustomerContacts;
+    DELETE FROM dbo.Users;
     DELETE FROM dbo.Customers;
 
     -- Reset identity counters
+
     DBCC CHECKIDENT ('dbo.Notifications', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.FraudAlertReviewHistory', RESEED, 0);
+
+    -- New fraud assessment table
+    DBCC CHECKIDENT ('dbo.FraudRiskAssessments', RESEED, 0);
+
     DBCC CHECKIDENT ('dbo.FraudAlerts', RESEED, 0);
     DBCC CHECKIDENT ('dbo.AuditLogs', RESEED, 0);
 
+    -- Credit card tables
     DBCC CHECKIDENT ('dbo.CreditCardTransactions', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.CreditCardBillingSettings', RESEED, 0);
     DBCC CHECKIDENT ('dbo.CreditCards', RESEED, 0);
     DBCC CHECKIDENT ('dbo.CreditCardApplications', RESEED, 0);
 
+    -- Transaction tables
+    DBCC CHECKIDENT ('dbo.TransactionNotes', RESEED, 0);
     DBCC CHECKIDENT ('dbo.Transactions', RESEED, 0);
-    DBCC CHECKIDENT ('dbo.Users', RESEED, 0);
+
+    -- New daily balance table
+    DBCC CHECKIDENT ('dbo.AccountDailyBalances', RESEED, 0);
+
+    -- Account tables
+    DBCC CHECKIDENT ('dbo.AccountStatusHistory', RESEED, 0);
     DBCC CHECKIDENT ('dbo.Accounts', RESEED, 0);
+
+    -- Customer tables
+    DBCC CHECKIDENT ('dbo.Beneficiaries', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.CustomerAddresses', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.CustomerContacts', RESEED, 0);
+    DBCC CHECKIDENT ('dbo.Users', RESEED, 0);
     DBCC CHECKIDENT ('dbo.Customers', RESEED, 0);
 
     -- FraudRules are preserved
@@ -541,4 +892,6 @@ BEGIN CATCH
     PRINT ERROR_MESSAGE();
 
 END CATCH;
-GO */
+
+============================================================ */
+

@@ -1,14 +1,13 @@
-
 -- ============================================================
 -- NG BANK
 -- FILE: 04_views.sql
--- PURPOSE: Consolidated database views
--- SOURCE: Current SQL Server database schema
--- STATUS: DRAFT - SQL SERVER TEST PENDING
+-- PURPOSE: Database views for banking and fraud analysis
+-- DATABASE: BankingFraudDB
 -- RUN AFTER: 01, 02 and 03
+-- TOTAL PROJECT VIEWS: 9
 -- ============================================================
 
-USE BankingFraudDB;
+USE BankingFraudDB_Test;
 GO
 
 -- ============================================================
@@ -339,7 +338,65 @@ WHERE fa.ReviewStatus <> 'Pending';
 GO
 
 -- ============================================================
--- 8. VERIFY ALL SEVEN VIEWS
+-- 8. ACCOUNT DAILY BALANCE DETAILS
+-- NEW VIEW
+-- ============================================================
+
+CREATE OR ALTER VIEW dbo.vw_AccountDailyBalanceDetails
+AS
+SELECT
+    adb.BalanceID,
+    adb.AccountID,
+    a.AccountNumber,
+    a.AccountType,
+    a.Currency,
+    a.CustomerID,
+    c.FirstName,
+    c.LastName,
+    adb.BalanceDate,
+    adb.ClosingBalance,
+    adb.RecordedAt
+
+FROM dbo.AccountDailyBalances AS adb
+
+INNER JOIN dbo.Accounts AS a
+    ON a.AccountID = adb.AccountID
+
+INNER JOIN dbo.Customers AS c
+    ON c.CustomerID = a.CustomerID;
+GO
+
+-- ============================================================
+-- 9. FRAUD RISK ASSESSMENT DETAILS
+-- NEW VIEW
+-- ============================================================
+
+CREATE OR ALTER VIEW dbo.vw_FraudRiskAssessmentDetails
+AS
+SELECT
+    fra.AssessmentID,
+    fra.AlertID,
+    fa.TransactionID,
+    fa.CardTransactionID,
+    fr.RuleName,
+    fr.RuleType,
+    fra.RiskLevel,
+    fra.ReviewStatus,
+    fa.AlertDescription,
+    fa.CreatedAt AS AlertCreatedAt,
+    fra.AssessedAt
+
+FROM dbo.FraudRiskAssessments AS fra
+
+INNER JOIN dbo.FraudAlerts AS fa
+    ON fa.AlertID = fra.AlertID
+
+INNER JOIN dbo.FraudRules AS fr
+    ON fr.RuleID = fa.RuleID;
+GO
+
+-- ============================================================
+-- 10. VERIFY ALL NINE VIEWS
 -- ============================================================
 
 SELECT
@@ -348,8 +405,103 @@ SELECT
     modify_date AS ModifiedAt
 FROM sys.views
 WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND name IN
+  (
+      N'vw_AccountSummary',
+      N'vw_DailyTransactionStats',
+      N'vw_FraudTransactions',
+      N'vw_FraudAlertDetails',
+      N'vw_SuspiciousTransactions',
+      N'vw_CustomerRiskSummary',
+      N'vw_CustomerFraudReviews',
+      N'vw_AccountDailyBalanceDetails',
+      N'vw_FraudRiskAssessmentDetails'
+  )
 ORDER BY name;
 GO
 
-PRINT 'NG BANK views script completed.';
+-- ============================================================
+-- 11. CHECK VIEW COUNT
+-- ============================================================
+
+DECLARE @ViewCount INT;
+
+SELECT @ViewCount = COUNT(*)
+FROM sys.views
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND name IN
+  (
+      N'vw_AccountSummary',
+      N'vw_DailyTransactionStats',
+      N'vw_FraudTransactions',
+      N'vw_FraudAlertDetails',
+      N'vw_SuspiciousTransactions',
+      N'vw_CustomerRiskSummary',
+      N'vw_CustomerFraudReviews',
+      N'vw_AccountDailyBalanceDetails',
+      N'vw_FraudRiskAssessmentDetails'
+  );
+
+IF @ViewCount = 9
+BEGIN
+    PRINT 'NG BANK: All nine required views exist.';
+END
+ELSE
+BEGIN
+    PRINT 'NG BANK WARNING: Expected 9 views, found '
+          + CAST(@ViewCount AS VARCHAR(10)) + '.';
+END;
+
+SELECT
+    @ViewCount AS TotalViews,
+    CASE
+        WHEN @ViewCount = 9 THEN 'PASS'
+        ELSE 'FAIL'
+    END AS VerificationStatus;
+GO
+
+-- ============================================================
+-- 12. VERIFY DATABASE TABLE COUNT
+-- ============================================================
+
+DECLARE @TableCount INT;
+
+SELECT @TableCount = COUNT(*)
+FROM sys.tables
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND is_ms_shipped = 0;
+
+IF @TableCount = 20
+BEGIN
+    PRINT 'NG BANK: Exactly 20 tables confirmed.';
+END
+ELSE
+BEGIN
+    PRINT 'NG BANK WARNING: Expected 20 tables, found '
+          + CAST(@TableCount AS VARCHAR(10)) + '.';
+END;
+
+SELECT
+    @TableCount AS TotalTables,
+    CASE
+        WHEN @TableCount = 20 THEN 'PASS'
+        ELSE 'FAIL'
+    END AS VerificationStatus;
+GO
+
+-- ============================================================
+-- 13. TEST NEW VIEWS
+-- ============================================================
+
+SELECT TOP (10) *
+FROM dbo.vw_AccountDailyBalanceDetails
+ORDER BY BalanceDate DESC, AccountID;
+GO
+
+SELECT TOP (10) *
+FROM dbo.vw_FraudRiskAssessmentDetails
+ORDER BY AssessedAt DESC, AlertID;
+GO
+
+PRINT '04_views.sql completed successfully.';
 GO

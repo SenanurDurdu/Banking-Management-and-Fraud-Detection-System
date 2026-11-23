@@ -21,7 +21,7 @@ from argon2.exceptions import (
 # ============================================================
 
 DB_SERVER = os.getenv("DB_SERVER", "localhost")
-DB_NAME = os.getenv("DB_NAME", "BankingFraudDB")
+DB_NAME = os.getenv("DB_NAME", "BankingFraudDB_Test")
 DB_DRIVER = os.getenv(
     "DB_DRIVER",
     "ODBC Driver 18 for SQL Server"

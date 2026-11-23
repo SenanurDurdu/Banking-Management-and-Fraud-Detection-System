@@ -167,6 +167,13 @@ class AccountsMixin:
 
             cur.execute(
                 """
+                SET NOCOUNT ON;
+
+                DECLARE @NewAccount TABLE
+                (
+                    AccountID INT
+                );
+
                 INSERT INTO dbo.Accounts
                 (
                     CustomerID,
@@ -175,7 +182,11 @@ class AccountsMixin:
                     Balance
                 )
                 OUTPUT INSERTED.AccountID
-                VALUES (?, ?, ?, ?)
+                    INTO @NewAccount(AccountID)
+                VALUES (?, ?, ?, ?);
+
+                SELECT AccountID
+                FROM @NewAccount;
                 """,
                 customer_id,
                 account_number,
@@ -184,7 +195,6 @@ class AccountsMixin:
             )
 
             account_id = int(cur.fetchone()[0])
-
             audit(
                 cur,
                 "CREATE",

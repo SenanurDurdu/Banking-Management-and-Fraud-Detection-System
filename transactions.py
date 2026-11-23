@@ -171,6 +171,61 @@ class TransactionsMixin:
 
             transaction_id = int(result[0])
 
+            if description:
+                cur.execute(
+                    """
+                    INSERT INTO dbo.TransactionNotes
+                    (
+                        TransactionID,
+                        CreatedByUserID,
+                        NoteText
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    transaction_id,
+                    session["user_id"],
+                    description
+                )
+
+                # Save transfer recipient automatically
+                if kind == "Transfer":
+                    cur.execute(
+                        """
+                        INSERT INTO dbo.Beneficiaries
+                        (
+                            CustomerID,
+                            DisplayName,
+                            AccountNumber,
+                            IsActive
+                        )
+                        SELECT
+                            sender.CustomerID,
+                            LEFT(
+                                CONCAT(c.FirstName, ' ', c.LastName),
+                                120
+                            ),
+                            receiver.AccountNumber,
+                            1
+                        FROM dbo.Accounts sender
+                        JOIN dbo.Accounts receiver
+                            ON receiver.AccountNumber = ?
+                        JOIN dbo.Customers c
+                            ON c.CustomerID = receiver.CustomerID
+                        WHERE sender.AccountID = ?
+                          AND sender.CustomerID <> receiver.CustomerID
+                          AND NOT EXISTS
+                          (
+                              SELECT 1
+                              FROM dbo.Beneficiaries b
+                                  WITH (UPDLOCK, HOLDLOCK)
+                              WHERE b.CustomerID = sender.CustomerID
+                                AND b.AccountNumber = receiver.AccountNumber
+                          )
+                        """,
+                        destination_number,
+                        source
+                    )
+
             con.commit()
 
             return transaction_id

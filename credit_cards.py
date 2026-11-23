@@ -529,8 +529,17 @@ class CreditCardsMixin:
 
             # Create the credit card.
 
+            # Create the credit card.
+
             cur.execute(
                 """
+                SET NOCOUNT ON;
+
+                DECLARE @NewCard TABLE
+                (
+                    CreditCardID INT
+                );
+
                 INSERT INTO dbo.CreditCards
                 (
                     ApplicationID,
@@ -545,11 +554,14 @@ class CreditCardsMixin:
                     ExpiresAt
                 )
                 OUTPUT INSERTED.CreditCardID
+                    INTO @NewCard(CreditCardID)
                 VALUES
                 (
-                    ?, ?, ?, ?, ?, ?,
-                    0, 'TRY', 'Active', ?
-                )
+                    ?, ?, ?, ?, ?, ?, 0, 'TRY', 'Active', ?
+                );
+
+                SELECT CreditCardID
+                FROM @NewCard;
                 """,
                 application_id,
                 customer_id,
@@ -560,8 +572,26 @@ class CreditCardsMixin:
                 expires_at
             )
 
-            credit_card_id = int(
-                cur.fetchone()[0]
+            credit_card_id = int(cur.fetchone()[0])
+            # Create default billing settings if not already created
+            cur.execute(
+                """
+                INSERT INTO dbo.CreditCardBillingSettings
+                (
+                    CreditCardID,
+                    ClosingDay,
+                    DueDaysAfterClosing
+                )
+                SELECT ?, 20, 10
+                WHERE NOT EXISTS
+                (
+                    SELECT 1
+                    FROM dbo.CreditCardBillingSettings WITH (UPDLOCK, HOLDLOCK)
+                    WHERE CreditCardID = ?
+                )
+                """,
+                credit_card_id,
+                credit_card_id
             )
 
             # Update application status.

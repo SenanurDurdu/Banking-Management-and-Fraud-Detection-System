@@ -1,27 +1,33 @@
-
 -- ============================================================
 -- NG BANK
 -- FILE: 03_seed_data.sql
--- PURPOSE: Insert default fraud detection rules
--- RUN AFTER: 01_schema.sql and 02_constraints_indexes.sql
--- STATUS: DRAFT - SQL SERVER TEST PENDING
+-- PURPOSE:
+--   1. Create default fraud detection rules
+--   2. Backfill daily account balances
+--   3. Backfill fraud risk assessments
 --
--- Existing rules and thresholds are preserved.
--- No existing records are deleted.
+-- RUN AFTER:
+--   01_schema.sql
+--   02_constraints_indexes.sql
+--
+-- SAFE TO RERUN:
+--   Existing customers, accounts, transactions and alerts
+--   are not deleted.
 -- ============================================================
 
-USE BankingFraudDB;
+USE BankingFraudDB_Test;
 GO
 
 SET NOCOUNT ON;
+SET XACT_ABORT ON;
 GO
 
 -- ============================================================
 -- 1. HIGH AMOUNT RULE
--- Detect transactions of 50,000 TRY or more.
 -- ============================================================
 
-IF NOT EXISTS (
+IF NOT EXISTS
+(
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'HighAmount'
@@ -43,21 +49,15 @@ BEGIN
         60,
         1
     );
-
-    PRINT 'HighAmount rule created.';
-END
-ELSE
-BEGIN
-    PRINT 'HighAmount rule already exists. Skipped.';
 END;
 GO
 
 -- ============================================================
 -- 2. FREQUENT TRANSACTIONS RULE
--- Detect 5 or more transactions within 10 minutes.
 -- ============================================================
 
-IF NOT EXISTS (
+IF NOT EXISTS
+(
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'Frequent'
@@ -79,21 +79,15 @@ BEGIN
         10,
         1
     );
-
-    PRINT 'Frequent rule created.';
-END
-ELSE
-BEGIN
-    PRINT 'Frequent rule already exists. Skipped.';
 END;
 GO
 
 -- ============================================================
 -- 3. REPEATED AMOUNT RULE
--- Detect 3 same-amount transactions within 60 minutes.
 -- ============================================================
 
-IF NOT EXISTS (
+IF NOT EXISTS
+(
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'RepeatedAmount'
@@ -115,17 +109,79 @@ BEGIN
         60,
         1
     );
-
-    PRINT 'RepeatedAmount rule created.';
-END
-ELSE
-BEGIN
-    PRINT 'RepeatedAmount rule already exists. Skipped.';
 END;
 GO
 
 -- ============================================================
--- 4. VERIFY INSERTED RULES
+-- 4. ACCOUNT DAILY BALANCES BACKFILL
+--
+-- Only today's known account balance is recorded.
+-- Historical balances are not invented.
+-- ============================================================
+
+DECLARE @Today DATE = CONVERT(DATE, SYSDATETIME());
+
+INSERT INTO dbo.AccountDailyBalances
+(
+    AccountID,
+    BalanceDate,
+    ClosingBalance
+)
+SELECT
+    a.AccountID,
+    @Today,
+    a.Balance
+FROM dbo.Accounts AS a
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.AccountDailyBalances AS adb
+    WHERE adb.AccountID = a.AccountID
+      AND adb.BalanceDate = @Today
+);
+
+PRINT 'AccountDailyBalances backfill completed.';
+GO
+
+-- ============================================================
+-- 5. FRAUD RISK ASSESSMENTS BACKFILL
+--
+-- RiskLevel is copied from existing fraud alerts.
+-- ReviewStatus is copied from existing fraud alerts.
+--
+-- This table has one assessment per alert.
+-- ============================================================
+
+INSERT INTO dbo.FraudRiskAssessments
+(
+    AlertID,
+    RiskLevel,
+    ReviewStatus
+)
+SELECT
+    fa.AlertID,
+    fa.RiskLevel,
+    fa.ReviewStatus
+FROM dbo.FraudAlerts AS fa
+WHERE fa.RiskLevel IN
+(
+    'Low',
+    'Medium',
+    'High',
+    'Critical'
+)
+AND NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.FraudRiskAssessments AS fra
+    WHERE fra.AlertID = fa.AlertID
+);
+
+PRINT 'FraudRiskAssessments backfill completed.';
+GO
+
+-- ============================================================
+-- 6. VERIFY FRAUD RULES
 -- ============================================================
 
 SELECT
@@ -140,27 +196,72 @@ ORDER BY RuleID;
 GO
 
 -- ============================================================
--- 5. VERIFY REQUIRED RULE TYPES
+-- 7. VERIFY DAILY BALANCES
 -- ============================================================
 
 SELECT
-    Expected.RuleType,
-    CASE
-        WHEN EXISTS (
-            SELECT 1
-            FROM dbo.FraudRules AS fr
-            WHERE fr.RuleType = Expected.RuleType
-        )
-        THEN 'EXISTS'
-        ELSE 'MISSING'
-    END AS RuleStatus
-FROM (
-    VALUES
-        ('HighAmount'),
-        ('Frequent'),
-        ('RepeatedAmount')
-) AS Expected(RuleType);
+    adb.BalanceID,
+    adb.AccountID,
+    a.AccountNumber,
+    adb.BalanceDate,
+    adb.ClosingBalance,
+    adb.RecordedAt
+FROM dbo.AccountDailyBalances AS adb
+INNER JOIN dbo.Accounts AS a
+    ON a.AccountID = adb.AccountID
+ORDER BY
+    adb.BalanceDate DESC,
+    adb.AccountID;
 GO
 
-PRINT 'NG BANK default fraud rules checked.';
+-- ============================================================
+-- 8. VERIFY FRAUD RISK ASSESSMENTS
+-- ============================================================
+
+SELECT
+    fra.AssessmentID,
+    fra.AlertID,
+    fa.TransactionID,
+    fa.CardTransactionID,
+    fra.RiskLevel,
+    fra.ReviewStatus,
+    fra.AssessedAt
+FROM dbo.FraudRiskAssessments AS fra
+INNER JOIN dbo.FraudAlerts AS fa
+    ON fa.AlertID = fra.AlertID
+ORDER BY fra.AssessmentID;
+GO
+
+-- ============================================================
+-- 9. VERIFY TABLE COUNTS
+-- ============================================================
+
+SELECT
+    t.name AS TableName,
+    p.RecordCount
+FROM sys.tables AS t
+CROSS APPLY
+(
+    SELECT SUM(ps.row_count) AS RecordCount
+    FROM sys.dm_db_partition_stats AS ps
+    WHERE ps.object_id = t.object_id
+      AND ps.index_id IN (0, 1)
+) AS p
+WHERE t.schema_id = SCHEMA_ID(N'dbo')
+  AND t.is_ms_shipped = 0
+ORDER BY t.name;
+GO
+
+-- ============================================================
+-- 10. VERIFY EXACTLY 20 TABLES
+-- ============================================================
+
+SELECT
+    COUNT(*) AS TotalTables
+FROM sys.tables
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND is_ms_shipped = 0;
+GO
+
+PRINT '03_seed_data.sql completed.';
 GO

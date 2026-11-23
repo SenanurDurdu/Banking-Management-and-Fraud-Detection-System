@@ -83,6 +83,53 @@ class AuthMixin:
             )
 
             user_id = int(cur.fetchone()[0])
+            # Save customer's primary address
+            cur.execute(
+                """
+                INSERT INTO dbo.CustomerAddresses
+                (
+                    CustomerID,
+                    AddressType,
+                    AddressLine,
+                    IsPrimary
+                )
+                VALUES (?, 'Home', ?, 1)
+                """,
+                customer_id,
+                address
+            )
+
+            # Save customer's primary email
+            cur.execute(
+                """
+                INSERT INTO dbo.CustomerContacts
+                (
+                    CustomerID,
+                    ContactType,
+                    ContactValue,
+                    IsPrimary
+                )
+                VALUES (?, 'Email', ?, 1)
+                """,
+                customer_id,
+                email
+            )
+
+            # Save customer's phone number
+            cur.execute(
+                """
+                INSERT INTO dbo.CustomerContacts
+                (
+                    CustomerID,
+                    ContactType,
+                    ContactValue,
+                    IsPrimary
+                )
+                VALUES (?, 'Phone', ?, 1)
+                """,
+                customer_id,
+                phone
+            )
 
             # Audit with the newly created UserID
             audit(

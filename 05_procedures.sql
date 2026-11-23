@@ -1,21 +1,36 @@
 
 -- ============================================================
--- NG BANK - 05_procedures.sql
--- PART 1/5: BANK TRANSACTION ENGINE
+-- NG BANK | 05_procedures.sql
+-- CONSOLIDATED VERSION - 20 TABLE DATABASE
 --
--- Creates the sp_ExecuteBankTransaction procedure.
--- Target database: BankingFraudDB
+-- 10 original application-facing procedures
+--  1 additional statement procedure
+--  4 triggers
+--  Billing settings backfill
+--  Final verification
+--
+-- RUN AFTER:
+-- 01_schema.sql
+-- 02_constraints_indexes.sql
+-- 03_seed_data.sql
+-- 04_views.sql
+--
+-- SQL SERVER EXECUTION TEST: NOT YET PERFORMED
 -- ============================================================
 
-USE [BankingFraudDB];
+USE [BankingFraudDB_Test];
 GO
+
 SET ANSI_NULLS ON;
 GO
 SET QUOTED_IDENTIFIER ON;
 GO
 
--- sp_ExecuteBankTransaction
-CREATE OR ALTER PROCEDURE [dbo].[sp_ExecuteBankTransaction]
+-- ============================================================
+-- 01. MAIN BANK TRANSACTION ENGINE
+-- ============================================================
+
+CREATE OR ALTER PROCEDURE dbo.sp_ExecuteBankTransaction
     @Kind VARCHAR(20),
     @UserID INT,
     @SourceAccountID INT,
@@ -30,18 +45,18 @@ BEGIN
     DECLARE
         @Role VARCHAR(20),
         @CustomerID INT,
-        @DestinationAccountID INT = NULL,
         @SourceCustomerID INT,
         @SourceBalance DECIMAL(18,2),
         @SourceCurrency CHAR(3),
         @SourceActive BIT,
         @SourceFrozen BIT,
+        @DestinationAccountID INT,
         @DestinationBalance DECIMAL(18,2),
         @DestinationCurrency CHAR(3),
         @DestinationActive BIT,
         @DestinationFrozen BIT,
-        @FromID INT = NULL,
-        @ToID INT = NULL,
+        @FromID INT,
+        @ToID INT,
         @TransactionID BIGINT,
         @FirstID INT,
         @SecondID INT,
@@ -49,25 +64,19 @@ BEGIN
 
     DECLARE @Created TABLE
     (
-        TransactionID BIGINT NOT NULL
+        TransactionID BIGINT
     );
 
-    -- ================================================
-    -- VALIDATE INPUTS
-    -- ================================================
-
     IF @Kind IS NULL
-       OR @Kind NOT IN ('Deposit', 'Withdrawal', 'Transfer')
+       OR @Kind NOT IN ('Deposit','Withdrawal','Transfer')
         THROW 51001, 'Invalid transaction type.', 1;
 
-    IF @UserID IS NULL
-       OR @UserID <= 0
-       OR @SourceAccountID IS NULL
-       OR @SourceAccountID <= 0
+    IF @UserID IS NULL OR @UserID <= 0
+       OR @SourceAccountID IS NULL OR @SourceAccountID <= 0
         THROW 51002, 'Invalid user or account.', 1;
 
     IF @Amount IS NULL OR @Amount <= 0
-        THROW 51003, 'Amount must be greater than zero.', 1;
+        THROW 51003, 'Amount must be positive.', 1;
 
     IF @Kind = 'Transfer'
        AND
@@ -76,23 +85,18 @@ BEGIN
            OR LEN(RTRIM(@DestinationAccountNumber)) <> 18
            OR LEFT(@DestinationAccountNumber, 2) <> 'TR'
            OR SUBSTRING(
-               @DestinationAccountNumber, 3, 16
+               @DestinationAccountNumber,3,16
            ) LIKE '%[^0-9]%'
        )
-        THROW 51005, 'Invalid recipient account number.', 1;
+        THROW 51005, 'Invalid destination account number.', 1;
 
     BEGIN TRY
-
         BEGIN TRANSACTION;
-
-        -- ============================================
-        -- AUTHORIZE USER
-        -- ============================================
 
         SELECT
             @Role = u.Role,
             @CustomerID = u.CustomerID
-        FROM dbo.Users AS u WITH (UPDLOCK, HOLDLOCK)
+        FROM dbo.Users AS u WITH (UPDLOCK,HOLDLOCK)
         LEFT JOIN dbo.Customers AS c
             ON c.CustomerID = u.CustomerID
         WHERE u.UserID = @UserID
@@ -110,56 +114,40 @@ BEGIN
         IF @Role IS NULL
             THROW 51006, 'User is not authorized.', 1;
 
-        -- Customers are allowed to deposit into
-        -- their own accounts.
-        -- No Admin-only Deposit restriction.
-
-        -- ============================================
-        -- FIND TRANSFER DESTINATION
-        -- ============================================
-
         IF @Kind = 'Transfer'
         BEGIN
-
             SELECT
                 @DestinationAccountID = AccountID
             FROM dbo.Accounts
             WHERE AccountNumber = @DestinationAccountNumber;
 
             IF @DestinationAccountID IS NULL
-                THROW 51008, 'Recipient account not found.', 1;
+                THROW 51008, 'Destination account not found.', 1;
 
             IF @DestinationAccountID = @SourceAccountID
-                THROW 51009, 'Source and destination must differ.', 1;
-
+                THROW 51009, 'Cannot transfer to the same account.', 1;
         END;
 
-        -- ============================================
-        -- LOCK ACCOUNTS IN FIXED ORDER
-        -- ============================================
+        -- Lock accounts in deterministic order.
 
         SET @FirstID =
             CASE
                 WHEN @DestinationAccountID IS NOT NULL
-                     AND @DestinationAccountID < @SourceAccountID
+                 AND @DestinationAccountID < @SourceAccountID
                 THEN @DestinationAccountID
                 ELSE @SourceAccountID
             END;
 
         SET @SecondID =
             CASE
-                WHEN @DestinationAccountID IS NULL
-                THEN NULL
-
+                WHEN @DestinationAccountID IS NULL THEN NULL
                 WHEN @DestinationAccountID > @SourceAccountID
                 THEN @DestinationAccountID
-
                 ELSE @SourceAccountID
             END;
 
-        SELECT
-            @LockedAccountID = AccountID
-        FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
+        SELECT @LockedAccountID = AccountID
+        FROM dbo.Accounts WITH (UPDLOCK,HOLDLOCK)
         WHERE AccountID = @FirstID;
 
         IF @LockedAccountID IS NULL
@@ -167,22 +155,15 @@ BEGIN
 
         IF @SecondID IS NOT NULL
         BEGIN
-
             SET @LockedAccountID = NULL;
 
-            SELECT
-                @LockedAccountID = AccountID
-            FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
+            SELECT @LockedAccountID = AccountID
+            FROM dbo.Accounts WITH (UPDLOCK,HOLDLOCK)
             WHERE AccountID = @SecondID;
 
             IF @LockedAccountID IS NULL
                 THROW 51010, 'Account not found.', 1;
-
         END;
-
-        -- ============================================
-        -- CHECK SOURCE ACCOUNT
-        -- ============================================
 
         SELECT
             @SourceCustomerID = CustomerID,
@@ -205,92 +186,64 @@ BEGIN
                @CustomerID IS NULL
                OR @SourceCustomerID <> @CustomerID
            )
-            THROW 51012, 'You can only use your own account.', 1;
-
-        -- ============================================
-        -- CHECK DESTINATION ACCOUNT
-        -- ============================================
+            THROW 51012, 'Account ownership check failed.', 1;
 
         IF @Kind = 'Transfer'
         BEGIN
-
             SELECT
                 @DestinationBalance = Balance,
                 @DestinationCurrency = Currency,
                 @DestinationActive = IsActive,
                 @DestinationFrozen = IsFrozen
             FROM dbo.Accounts
-            WHERE AccountID = @DestinationAccountID
-              AND AccountNumber = @DestinationAccountNumber;
+            WHERE AccountID = @DestinationAccountID;
 
             IF @DestinationActive IS NULL
                OR @DestinationActive <> 1
-                THROW 51013, 'Recipient account is unavailable.', 1;
+                THROW 51013, 'Destination account is unavailable.', 1;
 
             IF @DestinationFrozen = 1
-                THROW 51018, 'Recipient account is frozen.', 1;
+                THROW 51018, 'Destination account is frozen.', 1;
 
             IF @SourceCurrency <> @DestinationCurrency
-                THROW 51014, 'Different currencies are not supported.', 1;
-
+                THROW 51014, 'Currency mismatch.', 1;
         END;
 
-        -- ============================================
-        -- CHECK AVAILABLE BALANCE
-        -- ============================================
-
-        IF @Kind IN ('Withdrawal', 'Transfer')
+        IF @Kind IN ('Withdrawal','Transfer')
            AND @SourceBalance < @Amount
             THROW 51015, 'Insufficient balance.', 1;
 
-        -- Prevent DECIMAL(18,2) balance overflow.
         IF @Kind = 'Deposit'
            AND @SourceBalance >
                9999999999999999.99 - @Amount
-            THROW 51016, 'Account balance limit exceeded.', 1;
+            THROW 51016, 'Balance limit exceeded.', 1;
 
         IF @Kind = 'Transfer'
            AND @DestinationBalance >
                9999999999999999.99 - @Amount
-            THROW 51016, 'Recipient balance limit exceeded.', 1;
+            THROW 51016, 'Destination balance limit exceeded.', 1;
 
-        -- ============================================
-        -- EXECUTE DEPOSIT
-        -- ============================================
+        SET @FromID = NULL;
+        SET @ToID = NULL;
 
         IF @Kind = 'Deposit'
         BEGIN
-
             UPDATE dbo.Accounts
             SET Balance = Balance + @Amount
             WHERE AccountID = @SourceAccountID;
 
             SET @ToID = @SourceAccountID;
-
         END
-
-        -- ============================================
-        -- EXECUTE WITHDRAWAL
-        -- ============================================
-
         ELSE IF @Kind = 'Withdrawal'
         BEGIN
-
             UPDATE dbo.Accounts
             SET Balance = Balance - @Amount
             WHERE AccountID = @SourceAccountID;
 
             SET @FromID = @SourceAccountID;
-
         END
-
-        -- ============================================
-        -- EXECUTE TRANSFER
-        -- ============================================
-
         ELSE
         BEGIN
-
             UPDATE dbo.Accounts
             SET Balance = Balance - @Amount
             WHERE AccountID = @SourceAccountID;
@@ -301,12 +254,7 @@ BEGIN
 
             SET @FromID = @SourceAccountID;
             SET @ToID = @DestinationAccountID;
-
         END;
-
-        -- ============================================
-        -- INSERT TRANSACTION RECORD
-        -- ============================================
 
         INSERT INTO dbo.Transactions
         (
@@ -324,16 +272,11 @@ BEGIN
             @ToID,
             @Kind,
             @Amount,
-            COALESCE(@Description, N'')
+            COALESCE(@Description,N'')
         );
 
-        SELECT
-            @TransactionID = TransactionID
+        SELECT @TransactionID = TransactionID
         FROM @Created;
-
-        -- ============================================
-        -- INSERT AUDIT LOG
-        -- ============================================
 
         INSERT INTO dbo.AuditLogs
         (
@@ -348,48 +291,27 @@ BEGIN
             UPPER(@Kind),
             'Transaction',
             @TransactionID,
-            CONCAT(
-                @Kind,
-                ': ',
-                CONVERT(VARCHAR(40), @Amount)
-            ),
+            CONCAT(@Kind, ': ', @Amount),
             @UserID
         );
 
         COMMIT TRANSACTION;
 
         SELECT @TransactionID AS TransactionID;
-
     END TRY
     BEGIN CATCH
-
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
-
         THROW;
-
     END CATCH;
-
 END;
 GO
 
-
 -- ============================================================
--- NG BANK - 05_procedures.sql
--- PART 2/5: BANK TRANSACTION WRAPPERS
---
--- Run after sp_ExecuteBankTransaction is created.
--- Target database: BankingFraudDB
+-- 02. DEPOSIT
 -- ============================================================
 
-USE [BankingFraudDB];
-GO
-
--- ============================================================
--- 1. DEPOSIT
--- ============================================================
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_Deposit]
+CREATE OR ALTER PROCEDURE dbo.sp_Deposit
     @UserID INT,
     @SourceAccountID INT,
     @Amount DECIMAL(18,2),
@@ -408,10 +330,10 @@ END;
 GO
 
 -- ============================================================
--- 2. WITHDRAW
+-- 03. WITHDRAW
 -- ============================================================
 
-CREATE OR ALTER PROCEDURE [dbo].[sp_Withdraw]
+CREATE OR ALTER PROCEDURE dbo.sp_Withdraw
     @UserID INT,
     @SourceAccountID INT,
     @Amount DECIMAL(18,2),
@@ -430,10 +352,10 @@ END;
 GO
 
 -- ============================================================
--- 3. TRANSFER
+-- 04. TRANSFER
 -- ============================================================
 
-CREATE OR ALTER PROCEDURE [dbo].[sp_Transfer]
+CREATE OR ALTER PROCEDURE dbo.sp_Transfer
     @UserID INT,
     @SourceAccountID INT,
     @DestinationAccountNumber CHAR(18),
@@ -453,17 +375,11 @@ BEGIN
 END;
 GO
 
-
 -- ============================================================
--- NG BANK - 05_procedures.sql
--- PART 3/5: CREDIT CARD TRANSACTION ENGINE
--- TARGET: BankingFraudDB
+-- 05. CREDIT CARD TRANSACTION ENGINE
 -- ============================================================
 
-USE [BankingFraudDB];
-GO
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_ExecuteCreditCardTransaction]
+CREATE OR ALTER PROCEDURE dbo.sp_ExecuteCreditCardTransaction
     @Kind VARCHAR(20),
     @UserID INT,
     @CreditCardID BIGINT,
@@ -482,55 +398,45 @@ BEGIN
         @CardCurrency CHAR(3),
         @CreditLimit DECIMAL(18,2),
         @OutstandingBalance DECIMAL(18,2),
-        @AvailableLimit DECIMAL(18,2),
         @ExpiresAt DATE,
         @AccountBalance DECIMAL(18,2),
         @AccountActive BIT,
         @AccountFrozen BIT,
         @AccountCurrency CHAR(3),
-        @BankTransactionID BIGINT = NULL,
+        @BankTransactionID BIGINT,
         @CardTransactionID BIGINT,
         @BankDescription NVARCHAR(250);
 
-    DECLARE @CreatedCardTransaction TABLE
-    (
-        CardTransactionID BIGINT
-    );
-
-    DECLARE @CreatedBankTransaction TABLE
+    DECLARE @CreatedBank TABLE
     (
         TransactionID BIGINT
     );
 
-    -- ========================================================
-    -- VALIDATE INPUTS
-    -- ========================================================
+    DECLARE @CreatedCard TABLE
+    (
+        CardTransactionID BIGINT
+    );
 
     IF @Kind IS NULL
-       OR @Kind NOT IN ('Purchase', 'CashAdvance', 'Payment')
-        THROW 51101, 'Invalid credit card transaction type.', 1;
+       OR @Kind NOT IN ('Purchase','CashAdvance','Payment')
+        THROW 51101, 'Invalid card transaction type.', 1;
 
     IF @UserID IS NULL OR @UserID <= 0
-        THROW 51102, 'Invalid user ID.', 1;
+        THROW 51102, 'Invalid user.', 1;
 
     IF @CreditCardID IS NULL OR @CreditCardID <= 0
-        THROW 51103, 'Invalid credit card ID.', 1;
+        THROW 51103, 'Invalid credit card.', 1;
 
     IF @Amount IS NULL OR @Amount <= 0
-        THROW 51104, 'Amount must be greater than zero.', 1;
+        THROW 51104, 'Amount must be positive.', 1;
 
-    SET @Description = COALESCE(@Description, N'');
+    SET @Description = COALESCE(@Description,N'');
 
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- ====================================================
-        -- AUTHORIZE CUSTOMER
-        -- ====================================================
-
-        SELECT
-            @CustomerID = u.CustomerID
-        FROM dbo.Users AS u WITH (UPDLOCK, HOLDLOCK)
+        SELECT @CustomerID = u.CustomerID
+        FROM dbo.Users AS u WITH (UPDLOCK,HOLDLOCK)
         INNER JOIN dbo.Customers AS c
             ON c.CustomerID = u.CustomerID
         WHERE u.UserID = @UserID
@@ -539,14 +445,9 @@ BEGIN
           AND c.IsActive = 1;
 
         IF @CustomerID IS NULL
-            THROW 51105, 'Active customer access required.', 1;
+            THROW 51105, 'Active customer required.', 1;
 
-        -- ====================================================
-        -- IDENTIFY LINKED BANK ACCOUNT
-        -- ====================================================
-
-        SELECT
-            @LinkedAccountID = LinkedAccountID
+        SELECT @LinkedAccountID = LinkedAccountID
         FROM dbo.CreditCards
         WHERE CreditCardID = @CreditCardID
           AND CustomerID = @CustomerID;
@@ -554,31 +455,23 @@ BEGIN
         IF @LinkedAccountID IS NULL
             THROW 51106, 'Credit card not found.', 1;
 
-        -- ====================================================
-        -- LOCK AND VALIDATE LINKED BANK ACCOUNT
-        -- ====================================================
-
         SELECT
             @AccountBalance = Balance,
             @AccountActive = IsActive,
             @AccountFrozen = IsFrozen,
             @AccountCurrency = Currency
-        FROM dbo.Accounts WITH (UPDLOCK, HOLDLOCK)
+        FROM dbo.Accounts WITH (UPDLOCK,HOLDLOCK)
         WHERE AccountID = @LinkedAccountID
           AND CustomerID = @CustomerID;
 
         IF @AccountActive IS NULL OR @AccountActive <> 1
-            THROW 51107, 'Linked bank account is unavailable.', 1;
+            THROW 51107, 'Linked account unavailable.', 1;
 
         IF @AccountFrozen = 1
-            THROW 51108, 'Linked bank account is frozen.', 1;
+            THROW 51108, 'Linked account frozen.', 1;
 
-        IF @AccountCurrency IS NULL OR @AccountCurrency <> 'TRY'
-            THROW 51109, 'Only TRY accounts are supported.', 1;
-
-        -- ====================================================
-        -- LOCK AND VALIDATE CREDIT CARD
-        -- ====================================================
+        IF @AccountCurrency <> 'TRY'
+            THROW 51109, 'Only TRY supported.', 1;
 
         SELECT
             @CardCustomerID = CustomerID,
@@ -587,89 +480,61 @@ BEGIN
             @CreditLimit = CreditLimit,
             @OutstandingBalance = OutstandingBalance,
             @ExpiresAt = ExpiresAt
-        FROM dbo.CreditCards WITH (UPDLOCK, HOLDLOCK)
+        FROM dbo.CreditCards WITH (UPDLOCK,HOLDLOCK)
         WHERE CreditCardID = @CreditCardID
           AND CustomerID = @CustomerID
           AND LinkedAccountID = @LinkedAccountID;
 
         IF @CardCustomerID IS NULL
-            THROW 51110, 'Credit card is unavailable.', 1;
+            THROW 51110, 'Credit card unavailable.', 1;
 
         IF @CardCurrency <> 'TRY'
-            THROW 51111, 'Only TRY credit cards are supported.', 1;
+            THROW 51111, 'Card currency not supported.', 1;
 
-        -- Spending requires an active, unexpired card.
-        -- Payments remain available for frozen, expired
-        -- or closed cards when the linked account is usable.
-
-        IF @Kind IN ('Purchase', 'CashAdvance')
+        IF @Kind IN ('Purchase','CashAdvance')
         BEGIN
             IF @CardStatus <> 'Active'
-                THROW 51112, 'This credit card is not active.', 1;
+                THROW 51112, 'Card is not active.', 1;
 
-            IF @ExpiresAt < CAST(SYSDATETIME() AS DATE)
-                THROW 51113, 'This credit card has expired.', 1;
+            IF @ExpiresAt < CONVERT(DATE,SYSDATETIME())
+                THROW 51113, 'Card has expired.', 1;
+
+            IF @Amount > @CreditLimit - @OutstandingBalance
+                THROW 51114, 'Insufficient card limit.', 1;
         END;
 
-        -- ====================================================
-        -- CREDIT LIMIT AND BALANCE VALIDATION
-        -- ====================================================
-
-        SET @AvailableLimit = @CreditLimit - @OutstandingBalance;
-
-        IF @Kind IN ('Purchase', 'CashAdvance')
-           AND @Amount > @AvailableLimit
-            THROW 51114, 'Insufficient available credit limit.', 1;
-
         IF @Kind = 'CashAdvance'
-           AND @AccountBalance > 9999999999999999.99 - @Amount
-            THROW 51115, 'Bank account balance limit exceeded.', 1;
+           AND @AccountBalance >
+               9999999999999999.99 - @Amount
+            THROW 51115, 'Account balance limit exceeded.', 1;
 
         IF @Kind = 'Payment'
         BEGIN
             IF @OutstandingBalance <= 0
-                THROW 51116, 'There is no outstanding credit card debt.', 1;
+                THROW 51116, 'No card debt.', 1;
 
             IF @Amount > @OutstandingBalance
-                THROW 51117, 'Payment cannot exceed outstanding debt.', 1;
+                THROW 51117, 'Payment exceeds card debt.', 1;
 
             IF @Amount > @AccountBalance
-                THROW 51118, 'Insufficient bank account balance.', 1;
+                THROW 51118, 'Insufficient bank balance.', 1;
         END;
-
-        -- ====================================================
-        -- PURCHASE
-        -- ====================================================
 
         IF @Kind = 'Purchase'
         BEGIN
             UPDATE dbo.CreditCards
             SET OutstandingBalance = OutstandingBalance + @Amount
             WHERE CreditCardID = @CreditCardID;
-
-            IF @@ROWCOUNT <> 1
-                THROW 51119, 'Credit card update failed.', 1;
         END
-
-        -- ====================================================
-        -- CASH ADVANCE
-        -- ====================================================
-
         ELSE IF @Kind = 'CashAdvance'
         BEGIN
             UPDATE dbo.CreditCards
             SET OutstandingBalance = OutstandingBalance + @Amount
             WHERE CreditCardID = @CreditCardID;
 
-            IF @@ROWCOUNT <> 1
-                THROW 51119, 'Credit card update failed.', 1;
-
             UPDATE dbo.Accounts
             SET Balance = Balance + @Amount
             WHERE AccountID = @LinkedAccountID;
-
-            IF @@ROWCOUNT <> 1
-                THROW 51120, 'Bank account update failed.', 1;
 
             SET @BankDescription = LEFT(
                 CONCAT(
@@ -677,8 +542,7 @@ BEGIN
                     @CreditCardID,
                     '. ',
                     @Description
-                ),
-                250
+                ),250
             );
 
             INSERT INTO dbo.Transactions
@@ -690,7 +554,7 @@ BEGIN
                 Description
             )
             OUTPUT INSERTED.TransactionID
-                INTO @CreatedBankTransaction(TransactionID)
+            INTO @CreatedBank(TransactionID)
             VALUES
             (
                 NULL,
@@ -700,26 +564,15 @@ BEGIN
                 @BankDescription
             );
         END
-
-        -- ====================================================
-        -- CREDIT CARD PAYMENT
-        -- ====================================================
-
-        ELSE IF @Kind = 'Payment'
+        ELSE
         BEGIN
             UPDATE dbo.Accounts
             SET Balance = Balance - @Amount
             WHERE AccountID = @LinkedAccountID;
 
-            IF @@ROWCOUNT <> 1
-                THROW 51120, 'Bank account update failed.', 1;
-
             UPDATE dbo.CreditCards
             SET OutstandingBalance = OutstandingBalance - @Amount
             WHERE CreditCardID = @CreditCardID;
-
-            IF @@ROWCOUNT <> 1
-                THROW 51119, 'Credit card update failed.', 1;
 
             SET @BankDescription = LEFT(
                 CONCAT(
@@ -727,8 +580,7 @@ BEGIN
                     @CreditCardID,
                     '. ',
                     @Description
-                ),
-                250
+                ),250
             );
 
             INSERT INTO dbo.Transactions
@@ -740,7 +592,7 @@ BEGIN
                 Description
             )
             OUTPUT INSERTED.TransactionID
-                INTO @CreatedBankTransaction(TransactionID)
+            INTO @CreatedBank(TransactionID)
             VALUES
             (
                 @LinkedAccountID,
@@ -751,52 +603,37 @@ BEGIN
             );
         END;
 
-        -- ====================================================
-        -- GET BANK TRANSACTION ID
-        -- ====================================================
-
         SELECT @BankTransactionID = TransactionID
-        FROM @CreatedBankTransaction;
-
-        -- ====================================================
-        -- INSERT CREDIT CARD TRANSACTION
-        -- ====================================================
+        FROM @CreatedBank;
 
         INSERT INTO dbo.CreditCardTransactions
         (
             CreditCardID,
+            BankTransactionID,
             TransactionType,
             Amount,
             Description,
-            TransactionStatus,
-            BankTransactionID
+            TransactionStatus
         )
         OUTPUT INSERTED.CardTransactionID
-            INTO @CreatedCardTransaction(CardTransactionID)
+        INTO @CreatedCard(CardTransactionID)
         VALUES
         (
             @CreditCardID,
+            @BankTransactionID,
             @Kind,
             @Amount,
             CASE
-                WHEN LEN(@Description) > 0
-                    THEN @Description
-                WHEN @Kind = 'Purchase'
-                    THEN N'Credit card purchase'
-                WHEN @Kind = 'CashAdvance'
-                    THEN N'Credit card cash advance'
-                ELSE N'Credit card debt payment'
+                WHEN LEN(@Description) > 0 THEN @Description
+                WHEN @Kind = 'Purchase' THEN N'Card purchase'
+                WHEN @Kind = 'CashAdvance' THEN N'Cash advance'
+                ELSE N'Card payment'
             END,
-            'Completed',
-            @BankTransactionID
+            'Completed'
         );
 
         SELECT @CardTransactionID = CardTransactionID
-        FROM @CreatedCardTransaction;
-
-        -- ====================================================
-        -- BANK TRANSACTION AUDIT LOG
-        -- ====================================================
+        FROM @CreatedCard;
 
         IF @BankTransactionID IS NOT NULL
         BEGIN
@@ -812,7 +649,7 @@ BEGIN
             (
                 CASE
                     WHEN @Kind = 'CashAdvance'
-                        THEN 'DEPOSIT'
+                    THEN 'DEPOSIT'
                     ELSE 'WITHDRAWAL'
                 END,
                 'Transaction',
@@ -821,10 +658,6 @@ BEGIN
                 @UserID
             );
         END;
-
-        -- ====================================================
-        -- CREDIT CARD AUDIT LOG
-        -- ====================================================
 
         INSERT INTO dbo.AuditLogs
         (
@@ -846,13 +679,8 @@ BEGIN
             'CreditCardTransactions',
             @CardTransactionID,
             CONCAT(
-                'CardID=',
-                @CreditCardID,
-                ', Type=',
-                @Kind,
-                ', Amount=',
-                CONVERT(VARCHAR(40), @Amount),
-                ' TRY'
+                'CardID=',@CreditCardID,
+                ', Amount=',@Amount
             ),
             @UserID
         );
@@ -862,145 +690,103 @@ BEGIN
         SELECT
             @CardTransactionID AS CardTransactionID,
             @BankTransactionID AS BankTransactionID;
-
     END TRY
     BEGIN CATCH
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
-
         THROW;
     END CATCH;
 END;
 GO
 
-
-
 -- ============================================================
--- NG BANK
--- FILE: 05_procedures.sql
--- PART 4/5: CREDIT CARD TRANSACTION WRAPPERS
---
--- Run after sp_ExecuteCreditCardTransaction.
--- Target database: BankingFraudDB
+-- 06. CREDIT CARD PURCHASE
 -- ============================================================
 
-USE [BankingFraudDB];
-GO
-
--- ============================================================
--- 1. CREDIT CARD PURCHASE
--- ============================================================
-
-CREATE OR ALTER PROCEDURE
-    [dbo].[sp_CreditCardPurchase]
-
+CREATE OR ALTER PROCEDURE dbo.sp_CreditCardPurchase
     @UserID INT,
     @CreditCardID BIGINT,
     @Amount DECIMAL(18,2),
     @Description NVARCHAR(250) = N''
-
 AS
 BEGIN
-
     SET NOCOUNT ON;
 
     EXEC dbo.sp_ExecuteCreditCardTransaction
-
         @Kind = 'Purchase',
         @UserID = @UserID,
         @CreditCardID = @CreditCardID,
         @Amount = @Amount,
         @Description = @Description;
-
 END;
 GO
 
 -- ============================================================
--- 2. CREDIT CARD CASH ADVANCE
+-- 07. CREDIT CARD CASH ADVANCE
 -- ============================================================
 
-CREATE OR ALTER PROCEDURE
-    [dbo].[sp_CreditCardCashAdvance]
-
+CREATE OR ALTER PROCEDURE dbo.sp_CreditCardCashAdvance
     @UserID INT,
     @CreditCardID BIGINT,
     @Amount DECIMAL(18,2),
     @Description NVARCHAR(250) = N''
-
 AS
 BEGIN
-
     SET NOCOUNT ON;
 
     EXEC dbo.sp_ExecuteCreditCardTransaction
-
         @Kind = 'CashAdvance',
         @UserID = @UserID,
         @CreditCardID = @CreditCardID,
         @Amount = @Amount,
         @Description = @Description;
-
 END;
 GO
 
 -- ============================================================
--- 3. CREDIT CARD PAYMENT
+-- 08. CREDIT CARD PAYMENT
 -- ============================================================
 
-CREATE OR ALTER PROCEDURE
-    [dbo].[sp_CreditCardPayment]
-
+CREATE OR ALTER PROCEDURE dbo.sp_CreditCardPayment
     @UserID INT,
     @CreditCardID BIGINT,
     @Amount DECIMAL(18,2),
     @Description NVARCHAR(250) = N''
-
 AS
 BEGIN
-
     SET NOCOUNT ON;
 
     EXEC dbo.sp_ExecuteCreditCardTransaction
-
         @Kind = 'Payment',
         @UserID = @UserID,
         @CreditCardID = @CreditCardID,
         @Amount = @Amount,
         @Description = @Description;
-
 END;
 GO
 
 -- ============================================================
--- NG BANK - 05_procedures.sql
--- PART 5/5: FRAUD DETECTION PROCEDURES
---
--- Creates sp_ScanFraud and sp_ScanCreditCardFraud.
--- Target database: BankingFraudDB
+-- 09. BANK FRAUD SCAN
 -- ============================================================
 
-USE [BankingFraudDB];
-GO
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_ScanFraud]
+CREATE OR ALTER PROCEDURE dbo.sp_ScanFraud
     @UserID INT
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    DECLARE @NewAlerts INT = 0;
-    DECLARE @LockResult INT;
+    DECLARE
+        @NewAlerts INT = 0,
+        @LockResult INT;
 
-    DECLARE @CreatedAlerts TABLE
+    DECLARE @Created TABLE
     (
         AlertID BIGINT,
         TransactionID BIGINT,
         RuleID INT,
         RiskLevel VARCHAR(10)
     );
-
-    -- VALIDATE USER
 
     IF @UserID IS NULL OR @UserID <= 0
         THROW 51030, 'Invalid UserID.', 1;
@@ -1018,8 +804,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- PREVENT CONCURRENT FRAUD SCANS
-
         EXEC @LockResult = sys.sp_getapplock
             @Resource = 'BankingFraudDB_FraudScan',
             @LockMode = 'Exclusive',
@@ -1027,76 +811,50 @@ BEGIN
             @LockTimeout = 10000;
 
         IF @LockResult < 0
-            THROW 51032,
-                  'Could not acquire fraud scan lock.',
-                  1;
+            THROW 51032, 'Fraud scan lock failed.', 1;
 
-        -- FIND TRANSACTIONS MATCHING ACTIVE RULES
-
-        ;WITH TransactionCandidates AS
+        ;WITH Candidates AS
         (
             SELECT
                 t.TransactionID,
-                t.FromAccountID,
-                t.ToAccountID,
                 t.Amount,
                 t.TransactionDate,
                 COALESCE(
                     t.FromAccountID,
                     t.ToAccountID
-                ) AS EvaluatedAccountID
+                ) AS AccountID
             FROM dbo.Transactions AS t
             WHERE t.Status = 'Completed'
         ),
-
-        RuleMatches AS
+        Matches AS
         (
             SELECT
                 t.TransactionID,
+                t.Amount,
                 r.RuleID,
-                r.RuleName,
                 r.RuleType,
                 r.ThresholdValue,
                 r.TimeWindowMinutes,
-                t.Amount,
-                counts.MatchCount,
-
-                CASE
-                    WHEN r.RuleType = 'HighAmount'
-                         AND t.Amount >= r.ThresholdValue
-                    THEN 1
-
-                    WHEN r.RuleType IN
-                         ('Frequent', 'RepeatedAmount')
-                         AND t.EvaluatedAccountID IS NOT NULL
-                         AND r.TimeWindowMinutes > 0
-                         AND counts.MatchCount >= r.ThresholdValue
-                    THEN 1
-
-                    ELSE 0
-                END AS IsSuspicious
-
-            FROM TransactionCandidates AS t
+                x.MatchCount
+            FROM Candidates AS t
             CROSS JOIN dbo.FraudRules AS r
-
             OUTER APPLY
             (
                 SELECT COUNT_BIG(*) AS MatchCount
                 FROM dbo.Transactions AS p
-
                 WHERE r.RuleType IN
-                      ('Frequent', 'RepeatedAmount')
-
+                (
+                    'Frequent',
+                    'RepeatedAmount'
+                )
                   AND r.TimeWindowMinutes > 0
-                  AND t.EvaluatedAccountID IS NOT NULL
+                  AND t.AccountID IS NOT NULL
                   AND p.Status = 'Completed'
-
                   AND p.TransactionDate >= DATEADD(
                       MINUTE,
                       -r.TimeWindowMinutes,
                       t.TransactionDate
                   )
-
                   AND
                   (
                       p.TransactionDate < t.TransactionDate
@@ -1106,24 +864,17 @@ BEGIN
                           AND p.TransactionID <= t.TransactionID
                       )
                   )
-
                   AND
                   (
-                      p.FromAccountID = t.EvaluatedAccountID
-                      OR p.ToAccountID = t.EvaluatedAccountID
+                      p.FromAccountID = t.AccountID
+                      OR p.ToAccountID = t.AccountID
                   )
-
                   AND
                   (
                       r.RuleType = 'Frequent'
-                      OR
-                      (
-                          r.RuleType = 'RepeatedAmount'
-                          AND p.Amount = t.Amount
-                      )
+                      OR p.Amount = t.Amount
                   )
-            ) AS counts
-
+            ) AS x
             WHERE r.IsActive = 1
               AND r.RuleType IN
               (
@@ -1132,51 +883,53 @@ BEGIN
                   'RepeatedAmount'
               )
         ),
-
-        SuspiciousTransactions AS
+        Suspicious AS
         (
             SELECT
-                m.TransactionID,
-                m.RuleID,
-
+                TransactionID,
+                RuleID,
                 CASE
-                    WHEN m.RuleType = 'HighAmount'
+                    WHEN RuleType = 'HighAmount'
                     THEN 'High'
-
-                    WHEN m.MatchCount >= m.ThresholdValue + 3
+                    WHEN MatchCount >= ThresholdValue + 3
                     THEN 'High'
-
                     ELSE 'Medium'
                 END AS RiskLevel,
-
-                CAST
-                (
+                CAST(
                     CASE
-                        WHEN m.RuleType = 'HighAmount'
+                        WHEN RuleType = 'HighAmount'
                         THEN CONCAT(
-                            'Amount ',
-                            CONVERT(VARCHAR(40), m.Amount),
-                            ' reached threshold ',
-                            CONVERT(VARCHAR(40), m.ThresholdValue),
-                            '.'
+                            'High amount: ',
+                            Amount,
+                            ', threshold: ',
+                            ThresholdValue
                         )
-
                         ELSE CONCAT(
-                            m.MatchCount,
+                            MatchCount,
                             ' matching transactions in ',
-                            m.TimeWindowMinutes,
-                            ' minutes.'
+                            TimeWindowMinutes,
+                            ' minutes'
                         )
                     END
                     AS NVARCHAR(500)
                 ) AS AlertDescription
-
-            FROM RuleMatches AS m
-            WHERE m.IsSuspicious = 1
+            FROM Matches
+            WHERE
+                (
+                    RuleType = 'HighAmount'
+                    AND Amount >= ThresholdValue
+                )
+                OR
+                (
+                    RuleType IN
+                    (
+                        'Frequent',
+                        'RepeatedAmount'
+                    )
+                    AND TimeWindowMinutes > 0
+                    AND MatchCount >= ThresholdValue
+                )
         )
-
-        -- INSERT NEW FRAUD ALERTS
-
         INSERT INTO dbo.FraudAlerts
         (
             TransactionID,
@@ -1184,44 +937,35 @@ BEGIN
             AlertDescription,
             RiskLevel
         )
-
         OUTPUT
             INSERTED.AlertID,
             INSERTED.TransactionID,
             INSERTED.RuleID,
             INSERTED.RiskLevel
-
-        INTO @CreatedAlerts
+        INTO @Created
         (
             AlertID,
             TransactionID,
             RuleID,
             RiskLevel
         )
-
         SELECT
             s.TransactionID,
             s.RuleID,
             s.AlertDescription,
             s.RiskLevel
-
-        FROM SuspiciousTransactions AS s
-
+        FROM Suspicious AS s
         WHERE NOT EXISTS
         (
             SELECT 1
             FROM dbo.FraudAlerts AS fa
-                WITH (UPDLOCK, HOLDLOCK)
+                WITH (UPDLOCK,HOLDLOCK)
             WHERE fa.TransactionID = s.TransactionID
               AND fa.RuleID = s.RuleID
         );
 
-        -- COUNT NEW ALERTS
-
         SELECT @NewAlerts = COUNT(*)
-        FROM @CreatedAlerts;
-
-        -- AUDIT EACH NEW FRAUD ALERT
+        FROM @Created;
 
         INSERT INTO dbo.AuditLogs
         (
@@ -1231,28 +975,17 @@ BEGIN
             Description,
             UserID
         )
-
         SELECT
             'FRAUD_ALERT',
             'FraudAlert',
-            ca.AlertID,
-
+            c.AlertID,
             CONCAT(
-                'Alert created for TransactionID ',
-                ca.TransactionID,
-                ', Rule: ',
-                r.RuleName,
-                ', Risk: ',
-                ca.RiskLevel
+                'TransactionID=',c.TransactionID,
+                ', RuleID=',c.RuleID,
+                ', Risk=',c.RiskLevel
             ),
-
             @UserID
-
-        FROM @CreatedAlerts AS ca
-        INNER JOIN dbo.FraudRules AS r
-            ON r.RuleID = ca.RuleID;
-
-        -- AUDIT THE FRAUD SCAN
+        FROM @Created AS c;
 
         INSERT INTO dbo.AuditLogs
         (
@@ -1262,53 +995,43 @@ BEGIN
             Description,
             UserID
         )
-
         VALUES
         (
             'FRAUD_SCAN',
             'FraudAlert',
             NULL,
-            CONCAT(@NewAlerts, ' new alerts created'),
+            CONCAT(@NewAlerts,' new bank fraud alerts'),
             @UserID
         );
 
         COMMIT TRANSACTION;
 
         SELECT @NewAlerts AS NewAlerts;
-
     END TRY
     BEGIN CATCH
-
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
-
         THROW;
-
     END CATCH;
 END;
 GO
 
+-- ============================================================
+-- 10. CREDIT CARD FRAUD SCAN
+-- ============================================================
 
-USE [BankingFraudDB];
-GO
-
-CREATE OR ALTER PROCEDURE [dbo].[sp_ScanCreditCardFraud]
+CREATE OR ALTER PROCEDURE dbo.sp_ScanCreditCardFraud
     @UserID INT
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    SET ANSI_PADDING ON;
-    SET ANSI_WARNINGS ON;
-    SET CONCAT_NULL_YIELDS_NULL ON;
-    SET ARITHABORT ON;
-    SET NUMERIC_ROUNDABORT OFF;
+    DECLARE
+        @NewAlerts INT = 0,
+        @LockResult INT;
 
-    DECLARE @NewAlerts INT = 0;
-    DECLARE @LockResult INT;
-
-    DECLARE @CreatedAlerts TABLE
+    DECLARE @Created TABLE
     (
         AlertID BIGINT,
         CardTransactionID BIGINT,
@@ -1316,13 +1039,8 @@ BEGIN
         RiskLevel VARCHAR(10)
     );
 
-    -- VALIDATE ADMIN USER
-
     IF @UserID IS NULL OR @UserID <= 0
-    BEGIN
-        RAISERROR('Invalid UserID.', 16, 1);
-        RETURN;
-    END;
+        THROW 51040, 'Invalid UserID.', 1;
 
     IF NOT EXISTS
     (
@@ -1332,309 +1050,709 @@ BEGIN
           AND Role = 'Admin'
           AND IsActive = 1
     )
-    BEGIN
-        RAISERROR('Admin access required.', 16, 1);
-        RETURN;
-    END;
+        THROW 51041, 'Admin access required.', 1;
 
     BEGIN TRY
-    BEGIN TRANSACTION;
+        BEGIN TRANSACTION;
 
-    -- PREVENT CONCURRENT FRAUD SCANS
+        EXEC @LockResult = sys.sp_getapplock
+            @Resource =
+                'BankingFraudDB_CreditCardFraudScan',
+            @LockMode = 'Exclusive',
+            @LockOwner = 'Transaction',
+            @LockTimeout = 10000;
 
-    EXEC @LockResult = sys.sp_getapplock
-        @Resource = 'BankingFraudDB_CreditCardFraudScan',
-        @LockMode = 'Exclusive',
-        @LockOwner = 'Transaction',
-        @LockTimeout = 10000;
+        IF @LockResult < 0
+            THROW 51042, 'Card fraud scan lock failed.', 1;
 
-    IF @LockResult < 0
-    BEGIN
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-
-        RAISERROR(
-            'Could not acquire fraud scan lock.',
-            16,
-            1
-        );
-
-        RETURN;
-    END;
-
-    -- FIND COMPLETED CREDIT CARD PURCHASES
-
-    ;WITH CardCandidates AS
-    (
-        SELECT
-            CardTransactionID,
-            CreditCardID,
-            Amount,
-            CreatedAt
-        FROM dbo.CreditCardTransactions
-        WHERE TransactionStatus = 'Completed'
-          AND TransactionType = 'Purchase'
-          AND BankTransactionID IS NULL
-    ),
-
-    -- MATCH ACTIVE FRAUD RULES
-
-    RuleMatches AS
-    (
-        SELECT
-            t.CardTransactionID,
-            r.RuleID,
-            r.RuleName,
-            r.RuleType,
-            r.ThresholdValue,
-            r.TimeWindowMinutes,
-            t.Amount,
-            counts.MatchCount,
-
-            CASE
-                WHEN r.RuleType = 'HighAmount'
-                     AND t.Amount >= r.ThresholdValue
-                THEN 1
-
-                WHEN r.RuleType IN
+        ;WITH Candidates AS
+        (
+            SELECT
+                ct.CardTransactionID,
+                ct.CreditCardID,
+                ct.Amount,
+                ct.CreatedAt
+            FROM dbo.CreditCardTransactions AS ct
+            WHERE ct.TransactionStatus = 'Completed'
+              AND ct.TransactionType = 'Purchase'
+              AND ct.BankTransactionID IS NULL
+        ),
+        Matches AS
+        (
+            SELECT
+                t.CardTransactionID,
+                t.Amount,
+                r.RuleID,
+                r.RuleType,
+                r.ThresholdValue,
+                r.TimeWindowMinutes,
+                x.MatchCount
+            FROM Candidates AS t
+            CROSS JOIN dbo.FraudRules AS r
+            OUTER APPLY
+            (
+                SELECT COUNT_BIG(*) AS MatchCount
+                FROM dbo.CreditCardTransactions AS p
+                WHERE r.RuleType IN
                 (
                     'Frequent',
                     'RepeatedAmount'
                 )
-                AND r.TimeWindowMinutes > 0
-                AND counts.MatchCount >= r.ThresholdValue
-                THEN 1
-
-                ELSE 0
-            END AS IsSuspicious
-
-        FROM CardCandidates AS t
-        CROSS JOIN dbo.FraudRules AS r
-
-        OUTER APPLY
+                  AND r.TimeWindowMinutes > 0
+                  AND p.CreditCardID = t.CreditCardID
+                  AND p.TransactionStatus = 'Completed'
+                  AND p.TransactionType = 'Purchase'
+                  AND p.BankTransactionID IS NULL
+                  AND p.CreatedAt >= DATEADD(
+                      MINUTE,
+                      -r.TimeWindowMinutes,
+                      t.CreatedAt
+                  )
+                  AND
+                  (
+                      p.CreatedAt < t.CreatedAt
+                      OR
+                      (
+                          p.CreatedAt = t.CreatedAt
+                          AND p.CardTransactionID <=
+                              t.CardTransactionID
+                      )
+                  )
+                  AND
+                  (
+                      r.RuleType = 'Frequent'
+                      OR p.Amount = t.Amount
+                  )
+            ) AS x
+            WHERE r.IsActive = 1
+              AND r.RuleType IN
+              (
+                  'HighAmount',
+                  'Frequent',
+                  'RepeatedAmount'
+              )
+        ),
+        Suspicious AS
         (
-            SELECT COUNT_BIG(*) AS MatchCount
-            FROM CardCandidates AS p
-
-            WHERE r.RuleType IN
-            (
-                'Frequent',
-                'RepeatedAmount'
-            )
-
-              AND r.TimeWindowMinutes > 0
-              AND p.CreditCardID = t.CreditCardID
-
-              AND p.CreatedAt >= DATEADD(
-                  MINUTE,
-                  -r.TimeWindowMinutes,
-                  t.CreatedAt
-              )
-
-              AND
-              (
-                  p.CreatedAt < t.CreatedAt
-                  OR
-                  (
-                      p.CreatedAt = t.CreatedAt
-                      AND p.CardTransactionID <=
-                          t.CardTransactionID
-                  )
-              )
-
-              AND
-              (
-                  r.RuleType = 'Frequent'
-                  OR
-                  (
-                      r.RuleType = 'RepeatedAmount'
-                      AND p.Amount = t.Amount
-                  )
-              )
-        ) AS counts
-
-        WHERE r.IsActive = 1
-          AND r.RuleType IN
-          (
-              'HighAmount',
-              'Frequent',
-              'RepeatedAmount'
-          )
-    ),
-
-    -- DETERMINE RISK LEVEL
-
-    SuspiciousTransactions AS
-    (
-        SELECT
-            CardTransactionID,
-            RuleID,
-
-            CASE
-                WHEN RuleType = 'HighAmount'
-                THEN 'High'
-
-                WHEN MatchCount >= ThresholdValue + 3
-                THEN 'High'
-
-                ELSE 'Medium'
-            END AS RiskLevel,
-
-            CAST
-            (
+            SELECT
+                CardTransactionID,
+                RuleID,
                 CASE
                     WHEN RuleType = 'HighAmount'
-                    THEN CONCAT(
-                        'Credit card purchase amount ',
-                        Amount,
-                        ' reached threshold ',
-                        ThresholdValue,
-                        '.'
+                    THEN 'High'
+                    WHEN MatchCount >= ThresholdValue + 3
+                    THEN 'High'
+                    ELSE 'Medium'
+                END AS RiskLevel,
+                CAST(
+                    CASE
+                        WHEN RuleType = 'HighAmount'
+                        THEN CONCAT(
+                            'High card purchase: ',
+                            Amount,
+                            ', threshold: ',
+                            ThresholdValue
+                        )
+                        ELSE CONCAT(
+                            MatchCount,
+                            ' matching card purchases in ',
+                            TimeWindowMinutes,
+                            ' minutes'
+                        )
+                    END
+                    AS NVARCHAR(500)
+                ) AS AlertDescription
+            FROM Matches
+            WHERE
+                (
+                    RuleType = 'HighAmount'
+                    AND Amount >= ThresholdValue
+                )
+                OR
+                (
+                    RuleType IN
+                    (
+                        'Frequent',
+                        'RepeatedAmount'
                     )
+                    AND TimeWindowMinutes > 0
+                    AND MatchCount >= ThresholdValue
+                )
+        )
+        INSERT INTO dbo.FraudAlerts
+        (
+            TransactionID,
+            CardTransactionID,
+            RuleID,
+            AlertDescription,
+            RiskLevel
+        )
+        OUTPUT
+            INSERTED.AlertID,
+            INSERTED.CardTransactionID,
+            INSERTED.RuleID,
+            INSERTED.RiskLevel
+        INTO @Created
+        (
+            AlertID,
+            CardTransactionID,
+            RuleID,
+            RiskLevel
+        )
+        SELECT
+            NULL,
+            s.CardTransactionID,
+            s.RuleID,
+            s.AlertDescription,
+            s.RiskLevel
+        FROM Suspicious AS s
+        WHERE NOT EXISTS
+        (
+            SELECT 1
+            FROM dbo.FraudAlerts AS fa
+                WITH (UPDLOCK,HOLDLOCK)
+            WHERE fa.CardTransactionID = s.CardTransactionID
+              AND fa.RuleID = s.RuleID
+        );
 
-                    ELSE CONCAT(
-                        MatchCount,
-                        ' matching credit card purchases in ',
-                        TimeWindowMinutes,
-                        ' minutes.'
-                    )
-                END
-                AS NVARCHAR(500)
-            ) AS AlertDescription
+        SELECT @NewAlerts = COUNT(*)
+        FROM @Created;
 
-        FROM RuleMatches
-        WHERE IsSuspicious = 1
-    )
+        INSERT INTO dbo.AuditLogs
+        (
+            ActionType,
+            EntityName,
+            EntityID,
+            Description,
+            UserID
+        )
+        SELECT
+            'FRAUD_ALERT',
+            'FraudAlert',
+            c.AlertID,
+            CONCAT(
+                'CardTransactionID=',c.CardTransactionID,
+                ', RuleID=',c.RuleID,
+                ', Risk=',c.RiskLevel
+            ),
+            @UserID
+        FROM @Created AS c;
 
-    -- INSERT FRAUD ALERTS
+        INSERT INTO dbo.AuditLogs
+        (
+            ActionType,
+            EntityName,
+            EntityID,
+            Description,
+            UserID
+        )
+        VALUES
+        (
+            'CREDIT_CARD_FRAUD_SCAN',
+            'FraudAlert',
+            NULL,
+            CONCAT(@NewAlerts,' new card fraud alerts'),
+            @UserID
+        );
 
-    INSERT INTO dbo.FraudAlerts
-    (
-        TransactionID,
-        CardTransactionID,
-        RuleID,
-        AlertDescription,
-        RiskLevel
-    )
+        COMMIT TRANSACTION;
 
-    OUTPUT
-        INSERTED.AlertID,
-        INSERTED.CardTransactionID,
-        INSERTED.RuleID,
-        INSERTED.RiskLevel
-
-    INTO @CreatedAlerts
-    (
-        AlertID,
-        CardTransactionID,
-        RuleID,
-        RiskLevel
-    )
-
-    SELECT
-        NULL,
-        s.CardTransactionID,
-        s.RuleID,
-        s.AlertDescription,
-        s.RiskLevel
-
-    FROM SuspiciousTransactions AS s
-
-    WHERE NOT EXISTS
-    (
-        SELECT 1
-        FROM dbo.FraudAlerts AS fa
-            WITH (UPDLOCK, HOLDLOCK)
-
-        WHERE fa.CardTransactionID = s.CardTransactionID
-          AND fa.RuleID = s.RuleID
-    );
-
-    -- COUNT NEW FRAUD ALERTS
-
-    SELECT @NewAlerts = COUNT(*)
-    FROM @CreatedAlerts;
-
-    -- AUDIT NEW FRAUD ALERTS
-
-    INSERT INTO dbo.AuditLogs
-    (
-        ActionType,
-        EntityName,
-        EntityID,
-        Description,
-        UserID
-    )
-
-    SELECT
-        'FRAUD_ALERT',
-        'FraudAlert',
-        ca.AlertID,
-
-        CONCAT(
-            'Credit card fraud alert. ',
-            'CardTransactionID=',
-            ca.CardTransactionID,
-            ', Rule=',
-            r.RuleName,
-            ', Risk=',
-            ca.RiskLevel
-        ),
-
-        @UserID
-
-    FROM @CreatedAlerts AS ca
-    INNER JOIN dbo.FraudRules AS r
-        ON r.RuleID = ca.RuleID;
-
-    -- AUDIT FRAUD SCAN
-
-    INSERT INTO dbo.AuditLogs
-    (
-        ActionType,
-        EntityName,
-        EntityID,
-        Description,
-        UserID
-    )
-
-    VALUES
-    (
-        'CREDIT_CARD_FRAUD_SCAN',
-        'FraudAlert',
-        NULL,
-        CONCAT(
-            @NewAlerts,
-            ' new credit card fraud alerts created.'
-        ),
-        @UserID
-    );
-
-     COMMIT TRANSACTION;
-
-    SELECT @NewAlerts AS NewAlerts;
-
-END TRY
-BEGIN CATCH
-
-    IF XACT_STATE() <> 0
-        ROLLBACK TRANSACTION;
-
-    THROW;
-
-END CATCH;
-
+        SELECT @NewAlerts AS NewAlerts;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
 END;
 GO
 
+-- ============================================================
+-- 11. ACCOUNT STATUS HISTORY TRIGGER
+-- ============================================================
 
+CREATE OR ALTER TRIGGER dbo.trg_Accounts_StatusHistory
+ON dbo.Accounts
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
 
-USE BankingFraudDB;
+    IF NOT (UPDATE(IsActive) OR UPDATE(IsFrozen))
+        RETURN;
+
+    INSERT INTO dbo.AccountStatusHistory
+    (
+        AccountID,
+        ChangedByUserID,
+        OldIsActive,
+        NewIsActive,
+        OldIsFrozen,
+        NewIsFrozen,
+        ChangeReason,
+        ChangedAt
+    )
+    SELECT
+        i.AccountID,
+        NULL,
+        d.IsActive,
+        i.IsActive,
+        d.IsFrozen,
+        i.IsFrozen,
+        N'Account status changed',
+        SYSDATETIME()
+    FROM inserted AS i
+    INNER JOIN deleted AS d
+        ON d.AccountID = i.AccountID
+    WHERE i.IsActive <> d.IsActive
+       OR i.IsFrozen <> d.IsFrozen;
+END;
 GO
 
+-- ============================================================
+-- 12. FRAUD ALERT REVIEW HISTORY TRIGGER
+-- ============================================================
+
+CREATE OR ALTER TRIGGER dbo.trg_FraudAlerts_ReviewHistory
+ON dbo.FraudAlerts
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT
+    (
+        UPDATE(ReviewStatus)
+        OR UPDATE(ReviewNote)
+        OR UPDATE(ReviewedByUserID)
+    )
+        RETURN;
+
+    INSERT INTO dbo.FraudAlertReviewHistory
+    (
+        AlertID,
+        ReviewedByUserID,
+        OldReviewStatus,
+        NewReviewStatus,
+        ReviewNote,
+        ReviewedAt
+    )
+    SELECT
+        i.AlertID,
+        i.ReviewedByUserID,
+        d.ReviewStatus,
+        i.ReviewStatus,
+        i.ReviewNote,
+        COALESCE(i.ReviewedAt, SYSDATETIME())
+    FROM inserted AS i
+    INNER JOIN deleted AS d
+        ON d.AlertID = i.AlertID
+    WHERE i.ReviewStatus <> d.ReviewStatus
+       OR ISNULL(i.ReviewNote, N'')
+          <> ISNULL(d.ReviewNote, N'')
+       OR ISNULL(i.ReviewedByUserID, -1)
+          <> ISNULL(d.ReviewedByUserID, -1);
+END;
+GO
+
+-- ============================================================
+-- 13. DEFAULT BILLING SETTINGS TRIGGER
+-- ============================================================
+
+CREATE OR ALTER TRIGGER dbo.trg_CreditCards_BillingSettings
+ON dbo.CreditCards
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.CreditCardBillingSettings
+    (
+        CreditCardID,
+        ClosingDay,
+        DueDaysAfterClosing,
+        EffectiveFrom,
+        UpdatedAt
+    )
+    SELECT
+        i.CreditCardID,
+        20,
+        10,
+        CONVERT(DATE, SYSDATETIME()),
+        SYSDATETIME()
+    FROM inserted AS i
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.CreditCardBillingSettings AS bs
+        WHERE bs.CreditCardID = i.CreditCardID
+    );
+END;
+GO
+
+-- ============================================================
+-- 14. BACKFILL BILLING SETTINGS
+-- ============================================================
+
+INSERT INTO dbo.CreditCardBillingSettings
+(
+    CreditCardID,
+    ClosingDay,
+    DueDaysAfterClosing,
+    EffectiveFrom,
+    UpdatedAt
+)
 SELECT
-    name AS ProcedureName
+    cc.CreditCardID,
+    20,
+    10,
+    CONVERT(DATE, SYSDATETIME()),
+    SYSDATETIME()
+FROM dbo.CreditCards AS cc
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.CreditCardBillingSettings AS bs
+    WHERE bs.CreditCardID = cc.CreditCardID
+);
+GO
+
+-- ============================================================
+-- 15. ACCOUNT DAILY BALANCES TRIGGER
+--
+-- When an account is created or its balance changes,
+-- today's recorded balance is updated automatically.
+-- ============================================================
+
+CREATE OR ALTER TRIGGER dbo.trg_Accounts_DailyBalances
+ON dbo.Accounts
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(Balance)
+        RETURN;
+
+    DECLARE @Today DATE = CONVERT(DATE, SYSDATETIME());
+
+    -- Update existing daily balance records.
+
+    UPDATE adb
+    SET
+        adb.ClosingBalance = i.Balance,
+        adb.RecordedAt = SYSDATETIME()
+    FROM dbo.AccountDailyBalances AS adb
+    INNER JOIN inserted AS i
+        ON i.AccountID = adb.AccountID
+    WHERE adb.BalanceDate = @Today
+      AND
+      (
+          adb.ClosingBalance <> i.Balance
+      );
+
+    -- Insert today's record for accounts without one.
+
+    INSERT INTO dbo.AccountDailyBalances
+    (
+        AccountID,
+        BalanceDate,
+        ClosingBalance,
+        RecordedAt
+    )
+    SELECT
+        i.AccountID,
+        @Today,
+        i.Balance,
+        SYSDATETIME()
+    FROM inserted AS i
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.AccountDailyBalances AS adb
+            WITH (UPDLOCK, HOLDLOCK)
+        WHERE adb.AccountID = i.AccountID
+          AND adb.BalanceDate = @Today
+    );
+END;
+GO
+
+-- ============================================================
+-- 16. FRAUD RISK ASSESSMENTS TRIGGER
+--
+-- Automatically creates or updates one assessment
+-- for every fraud alert.
+-- ============================================================
+
+CREATE OR ALTER TRIGGER dbo.trg_FraudAlerts_RiskAssessments
+ON dbo.FraudAlerts
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Update assessments for changed alerts.
+
+    UPDATE fra
+    SET
+        fra.RiskLevel = i.RiskLevel,
+        fra.ReviewStatus = i.ReviewStatus,
+        fra.AssessedAt = SYSDATETIME()
+    FROM dbo.FraudRiskAssessments AS fra
+    INNER JOIN inserted AS i
+        ON i.AlertID = fra.AlertID
+    WHERE fra.RiskLevel <> i.RiskLevel
+       OR fra.ReviewStatus <> i.ReviewStatus;
+
+    -- Create assessments for new alerts.
+
+    INSERT INTO dbo.FraudRiskAssessments
+    (
+        AlertID,
+        RiskLevel,
+        ReviewStatus,
+        AssessedAt
+    )
+    SELECT
+        i.AlertID,
+        i.RiskLevel,
+        i.ReviewStatus,
+        SYSDATETIME()
+    FROM inserted AS i
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.FraudRiskAssessments AS fra
+            WITH (UPDLOCK, HOLDLOCK)
+        WHERE fra.AlertID = i.AlertID
+    );
+END;
+GO
+
+-- ============================================================
+-- 17. BACKFILL DAILY BALANCES
+--
+-- Existing account balances are recorded for today.
+-- ============================================================
+
+DECLARE @Today DATE = CONVERT(DATE, SYSDATETIME());
+
+UPDATE adb
+SET
+    adb.ClosingBalance = a.Balance,
+    adb.RecordedAt = SYSDATETIME()
+FROM dbo.AccountDailyBalances AS adb
+INNER JOIN dbo.Accounts AS a
+    ON a.AccountID = adb.AccountID
+WHERE adb.BalanceDate = @Today
+  AND adb.ClosingBalance <> a.Balance;
+
+INSERT INTO dbo.AccountDailyBalances
+(
+    AccountID,
+    BalanceDate,
+    ClosingBalance
+)
+SELECT
+    a.AccountID,
+    @Today,
+    a.Balance
+FROM dbo.Accounts AS a
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.AccountDailyBalances AS adb
+    WHERE adb.AccountID = a.AccountID
+      AND adb.BalanceDate = @Today
+);
+GO
+
+-- ============================================================
+-- 18. BACKFILL FRAUD RISK ASSESSMENTS
+-- ============================================================
+
+UPDATE fra
+SET
+    fra.RiskLevel = fa.RiskLevel,
+    fra.ReviewStatus = fa.ReviewStatus,
+    fra.AssessedAt = SYSDATETIME()
+FROM dbo.FraudRiskAssessments AS fra
+INNER JOIN dbo.FraudAlerts AS fa
+    ON fa.AlertID = fra.AlertID
+WHERE fra.RiskLevel <> fa.RiskLevel
+   OR fra.ReviewStatus <> fa.ReviewStatus;
+
+INSERT INTO dbo.FraudRiskAssessments
+(
+    AlertID,
+    RiskLevel,
+    ReviewStatus
+)
+SELECT
+    fa.AlertID,
+    fa.RiskLevel,
+    fa.ReviewStatus
+FROM dbo.FraudAlerts AS fa
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.FraudRiskAssessments AS fra
+    WHERE fra.AlertID = fa.AlertID
+);
+GO
+
+-- ============================================================
+-- 19. REMOVE OLD STATEMENT PROCEDURE AND TRIGGER
+--
+-- These objects belong to the two removed tables.
+-- ============================================================
+
+IF OBJECT_ID(
+    N'dbo.sp_GenerateCreditCardStatement',
+    N'P'
+) IS NOT NULL
+BEGIN
+    DROP PROCEDURE dbo.sp_GenerateCreditCardStatement;
+END;
+GO
+
+IF OBJECT_ID(
+    N'dbo.trg_StatementItems_ValidateCard',
+    N'TR'
+) IS NOT NULL
+BEGIN
+    DROP TRIGGER dbo.trg_StatementItems_ValidateCard;
+END;
+GO
+
+-- ============================================================
+-- 20. VERIFY APPLICATION PROCEDURES
+-- ============================================================
+
+SELECT
+    name AS ProcedureName,
+    create_date AS CreatedAt,
+    modify_date AS ModifiedAt
 FROM sys.procedures
-WHERE schema_id = SCHEMA_ID('dbo')
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND name IN
+  (
+      N'sp_ExecuteBankTransaction',
+      N'sp_Deposit',
+      N'sp_Withdraw',
+      N'sp_Transfer',
+      N'sp_ExecuteCreditCardTransaction',
+      N'sp_CreditCardPurchase',
+      N'sp_CreditCardCashAdvance',
+      N'sp_CreditCardPayment',
+      N'sp_ScanFraud',
+      N'sp_ScanCreditCardFraud'
+  )
 ORDER BY name;
+GO
+
+-- ============================================================
+-- 21. VERIFY TRIGGERS
+-- ============================================================
+
+SELECT
+    t.name AS TriggerName,
+    OBJECT_NAME(t.parent_id) AS TableName,
+    t.is_disabled AS IsDisabled
+FROM sys.triggers AS t
+WHERE t.parent_class = 1
+  AND t.name IN
+  (
+      N'trg_Accounts_StatusHistory',
+      N'trg_FraudAlerts_ReviewHistory',
+      N'trg_CreditCards_BillingSettings',
+      N'trg_Accounts_DailyBalances',
+      N'trg_FraudAlerts_RiskAssessments'
+  )
+ORDER BY t.name;
+GO
+
+-- ============================================================
+-- 22. VERIFY DAILY BALANCE RECORDS
+-- ============================================================
+
+SELECT
+    adb.BalanceID,
+    adb.AccountID,
+    a.AccountNumber,
+    adb.BalanceDate,
+    adb.ClosingBalance,
+    adb.RecordedAt
+FROM dbo.AccountDailyBalances AS adb
+INNER JOIN dbo.Accounts AS a
+    ON a.AccountID = adb.AccountID
+ORDER BY
+    adb.BalanceDate DESC,
+    adb.AccountID;
+GO
+
+-- ============================================================
+-- 23. VERIFY FRAUD RISK ASSESSMENTS
+-- ============================================================
+
+SELECT
+    fra.AssessmentID,
+    fra.AlertID,
+    fa.TransactionID,
+    fa.CardTransactionID,
+    fra.RiskLevel,
+    fra.ReviewStatus,
+    fra.AssessedAt
+FROM dbo.FraudRiskAssessments AS fra
+INNER JOIN dbo.FraudAlerts AS fa
+    ON fa.AlertID = fra.AlertID
+ORDER BY fra.AssessmentID;
+GO
+
+-- ============================================================
+-- 24. VERIFY EXACTLY 20 TABLES
+-- ============================================================
+
+DECLARE @TableCount INT;
+
+SELECT @TableCount = COUNT(*)
+FROM sys.tables
+WHERE schema_id = SCHEMA_ID(N'dbo')
+  AND is_ms_shipped = 0;
+
+SELECT @TableCount AS TotalTables;
+
+IF @TableCount = 20
+BEGIN
+    PRINT 'NG BANK: Exactly 20 tables confirmed.';
+END
+ELSE
+BEGIN
+    PRINT 'NG BANK WARNING: Expected 20 tables, found '
+          + CAST(@TableCount AS VARCHAR(10)) + '.';
+END;
+GO
+
+-- ============================================================
+-- 25. FINAL SUMMARY
+-- ============================================================
+
+SELECT
+    (SELECT COUNT(*)
+     FROM sys.tables
+     WHERE schema_id = SCHEMA_ID(N'dbo')
+       AND is_ms_shipped = 0) AS TotalTables,
+
+    (SELECT COUNT(*)
+     FROM sys.views
+     WHERE schema_id = SCHEMA_ID(N'dbo')) AS TotalViews,
+
+    (SELECT COUNT(*)
+     FROM dbo.AccountDailyBalances) AS DailyBalanceRecords,
+
+    (SELECT COUNT(*)
+     FROM dbo.FraudRiskAssessments) AS FraudRiskRecords;
+GO
+
+PRINT '05_procedures.sql completed successfully.';
 GO
