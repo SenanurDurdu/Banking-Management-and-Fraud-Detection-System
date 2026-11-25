@@ -5,7 +5,7 @@
 --
 -- 10 original application-facing procedures
 --  1 additional statement procedure
---  4 triggers
+--  5 triggers
 --  Billing settings backfill
 --  Final verification
 --
@@ -14,8 +14,6 @@
 -- 02_constraints_indexes.sql
 -- 03_seed_data.sql
 -- 04_views.sql
---
--- SQL SERVER EXECUTION TEST: NOT YET PERFORMED
 -- ============================================================
 
 USE [BankingFraudDB_Test];
