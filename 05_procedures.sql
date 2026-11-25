@@ -1601,32 +1601,9 @@ WHERE NOT EXISTS
 );
 GO
 
--- ============================================================
--- 19. REMOVE OLD STATEMENT PROCEDURE AND TRIGGER
---
--- These objects belong to the two removed tables.
--- ============================================================
-
-IF OBJECT_ID(
-    N'dbo.sp_GenerateCreditCardStatement',
-    N'P'
-) IS NOT NULL
-BEGIN
-    DROP PROCEDURE dbo.sp_GenerateCreditCardStatement;
-END;
-GO
-
-IF OBJECT_ID(
-    N'dbo.trg_StatementItems_ValidateCard',
-    N'TR'
-) IS NOT NULL
-BEGIN
-    DROP TRIGGER dbo.trg_StatementItems_ValidateCard;
-END;
-GO
 
 -- ============================================================
--- 20. VERIFY APPLICATION PROCEDURES
+-- 19. VERIFY APPLICATION PROCEDURES
 -- ============================================================
 
 SELECT
@@ -1652,7 +1629,7 @@ ORDER BY name;
 GO
 
 -- ============================================================
--- 21. VERIFY TRIGGERS
+-- 20. VERIFY TRIGGERS
 -- ============================================================
 
 SELECT
@@ -1673,7 +1650,7 @@ ORDER BY t.name;
 GO
 
 -- ============================================================
--- 22. VERIFY DAILY BALANCE RECORDS
+-- 21. VERIFY DAILY BALANCE RECORDS
 -- ============================================================
 
 SELECT
@@ -1692,7 +1669,7 @@ ORDER BY
 GO
 
 -- ============================================================
--- 23. VERIFY FRAUD RISK ASSESSMENTS
+-- 22. VERIFY FRAUD RISK ASSESSMENTS
 -- ============================================================
 
 SELECT
@@ -1710,7 +1687,7 @@ ORDER BY fra.AssessmentID;
 GO
 
 -- ============================================================
--- 24. VERIFY EXACTLY 20 TABLES
+-- 23. VERIFY EXACTLY 20 TABLES
 -- ============================================================
 
 DECLARE @TableCount INT;
@@ -1734,7 +1711,7 @@ END;
 GO
 
 -- ============================================================
--- 25. FINAL SUMMARY
+-- 24. FINAL SUMMARY
 -- ============================================================
 
 SELECT
