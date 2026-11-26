@@ -18,22 +18,22 @@
 USE BankingFraudDB_Test;
 GO
 
-SET NOCOUNT ON;
-SET XACT_ABORT ON;
+SET NOCOUNT ON; --"1 row affected " gibi satır sayısı mesajlarını kapatır.
+SET XACT_ABORT ON; --Çalışma zamanı hatası olduğunda o an açık olan sql işlemini geri alır.
 GO
 
 -- ============================================================
 -- 1. HIGH AMOUNT RULE
 -- ============================================================
 
-IF NOT EXISTS
+IF NOT EXISTS  --60 dakika içerisinde 50000 den fazla tutarda işlem yapılırsa uyarı kuralıdır.
 (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'HighAmount'
 )
 BEGIN
-    INSERT INTO dbo.FraudRules
+    INSERT INTO dbo.FraudRules  --Fraud rules tablosuna eklenir
     (
         RuleName,
         RuleType,
@@ -56,14 +56,14 @@ GO
 -- 2. FREQUENT TRANSACTIONS RULE
 -- ============================================================
 
-IF NOT EXISTS
+IF NOT EXISTS -- 10 dakika içerisinde 5 ve daha fazla işlem yapılırsa uyarı kuralıdır.
 (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'Frequent'
 )
 BEGIN
-    INSERT INTO dbo.FraudRules
+    INSERT INTO dbo.FraudRules  --Fraud rules tablosuna eklenir
     (
         RuleName,
         RuleType,
@@ -86,14 +86,14 @@ GO
 -- 3. REPEATED AMOUNT RULE
 -- ============================================================
 
-IF NOT EXISTS
+IF NOT EXISTS -- 60 dakika içerisinde 3 kere aynı tutarda işlem yapılırsa uyarı kuralıdır.
 (
     SELECT 1
     FROM dbo.FraudRules
     WHERE RuleType = 'RepeatedAmount'
 )
 BEGIN
-    INSERT INTO dbo.FraudRules
+    INSERT INTO dbo.FraudRules --Fraud rules tablosuna eklenir
     (
         RuleName,
         RuleType,
@@ -127,12 +127,12 @@ INSERT INTO dbo.AccountDailyBalances
     BalanceDate,
     ClosingBalance
 )
-SELECT
+SELECT --Hesabın kimliği,bugünün tarihi ve o an ki bakiye seçilir accounts tablosundan.
     a.AccountID,
     @Today,
     a.Balance
 FROM dbo.Accounts AS a
-WHERE NOT EXISTS
+WHERE NOT EXISTS --Aynı hesap ve tarih zaten varsa eklemez.
 (
     SELECT 1
     FROM dbo.AccountDailyBalances AS adb
@@ -152,7 +152,7 @@ GO
 -- This table has one assessment per alert.
 -- ============================================================
 
-INSERT INTO dbo.FraudRiskAssessments
+INSERT INTO dbo.FraudRiskAssessments --Alarm id ve risk level ve incileme durumuna göre tablo doldurulur.
 (
     AlertID,
     RiskLevel,
@@ -170,7 +170,7 @@ WHERE fa.RiskLevel IN
     'High',
     'Critical'
 )
-AND NOT EXISTS
+AND NOT EXISTS --Zaten içerilenler tekrar eklenmez.
 (
     SELECT 1
     FROM dbo.FraudRiskAssessments AS fra
@@ -184,7 +184,7 @@ GO
 -- 6. VERIFY FRAUD RULES
 -- ============================================================
 
-SELECT
+SELECT       --Faud ruleslar id ye göre tabloda gösterilir.
     RuleID,
     RuleName,
     RuleType,
@@ -199,7 +199,7 @@ GO
 -- 7. VERIFY DAILY BALANCES
 -- ============================================================
 
-SELECT
+SELECT          --Günlük harcamalar tabloda gösterilir.
     adb.BalanceID,
     adb.AccountID,
     a.AccountNumber,
@@ -218,7 +218,7 @@ GO
 -- 8. VERIFY FRAUD RISK ASSESSMENTS
 -- ============================================================
 
-SELECT
+SELECT  --Risk değerlendirmeleri tabloda gösterilir.
     fra.AssessmentID,
     fra.AlertID,
     fa.TransactionID,
@@ -236,7 +236,7 @@ GO
 -- 9. VERIFY TABLE COUNTS
 -- ============================================================
 
-SELECT
+SELECT --Tablo sayıları hesaplanır ve gösterilir.
     t.name AS TableName,
     p.RecordCount
 FROM sys.tables AS t
@@ -255,7 +255,7 @@ GO
 -- ============================================================
 -- 10. VERIFY EXACTLY 20 TABLES
 -- ============================================================
-
+--20 tablo olduğu doğrulanır.
 SELECT
     COUNT(*) AS TotalTables
 FROM sys.tables

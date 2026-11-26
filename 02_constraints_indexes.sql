@@ -3,14 +3,14 @@
 -- NG BANK
 -- FILE: 02_constraints_indexes.sql
 -- PURPOSE: Constraints and indexes for 20-table database
--- DATABASE: BankingFraudDB
+-- DATABASE: BankingFraudDB_Test
 -- RUN AFTER: 01_schema.sql
 -- ============================================================
 
 USE BankingFraudDB_Test;
 GO
 
-SET NOCOUNT ON;
+SET NOCOUNT ON; --"1 row affected " gibi satır sayısı mesajlarını kapatır.
 GO
 
 -- ============================================================
@@ -21,13 +21,13 @@ IF NOT EXISTS
 (
     SELECT 1
     FROM sys.check_constraints
-    WHERE parent_object_id = OBJECT_ID(N'dbo.Transactions')
-      AND name = N'CK_Transactions_Shape'
-)
+    WHERE parent_object_id = OBJECT_ID(N'dbo.Transactions') --Aramayı transactions tablosuna sınırlar
+      AND name = N'CK_Transactions_Shape' --Tablodaki kuralın adını eşleştirir.
+)     --Işlem türüne göre hangi hesap alanlarının dolu olması gerektiğini verir.
 BEGIN
     ALTER TABLE dbo.Transactions
     WITH CHECK
-    ADD CONSTRAINT CK_Transactions_Shape
+    ADD CONSTRAINT CK_Transactions_Shape --Tablolar oluştuktan sonra yapılan değişikliklerdir.
     CHECK
     (
         (
@@ -46,7 +46,7 @@ BEGIN
             TransactionType = 'Transfer'
             AND FromAccountID IS NOT NULL
             AND ToAccountID IS NOT NULL
-            AND FromAccountID <> ToAccountID
+            AND FromAccountID <> ToAccountID --hedef ve kaynak hesaplar aynı olamaz.
         )
     );
 END;
@@ -60,8 +60,8 @@ IF NOT EXISTS
 (
     SELECT 1
     FROM sys.check_constraints
-    WHERE parent_object_id = OBJECT_ID(N'dbo.Transactions')
-      AND name = N'CK_Transactions_Status'
+    WHERE parent_object_id = OBJECT_ID(N'dbo.Transactions')-- Bu tablodaki;
+      AND name = N'CK_Transactions_Status' -- Bu kuralı eşleştirir.
 )
 BEGIN
     ALTER TABLE dbo.Transactions
@@ -69,7 +69,7 @@ BEGIN
     ADD CONSTRAINT CK_Transactions_Status
     CHECK
     (
-        Status IN
+        Status IN  -- Transaction statuleri sınırlandırılır.
         (
             'Completed',
             'Failed',
@@ -95,7 +95,7 @@ BEGIN
     ALTER TABLE dbo.FraudAlerts
     WITH CHECK
     ADD CONSTRAINT CK_FraudAlerts_RiskLevel
-    CHECK (RiskLevel IN ('Medium', 'High'));
+    CHECK (RiskLevel IN ('Medium', 'High')); --Risk levelları sınırlandırılır.
 END;
 GO
 
@@ -108,13 +108,13 @@ IF NOT EXISTS
     SELECT 1
     FROM sys.indexes
     WHERE object_id = OBJECT_ID(N'dbo.Customers')
-      AND name = N'UX_Customers_Phone'
+      AND name = N'UX_Customers_Phone' --Index adı ve ait olduğıu tablo aranır.
 )
 BEGIN
     CREATE UNIQUE INDEX UX_Customers_Phone
     ON dbo.Customers(Phone)
     WHERE Phone IS NOT NULL
-      AND Phone <> N'';
+      AND Phone <> N''; --Bir telefon numarası boş metin , null ve aynı olamaz.
 END;
 GO
 
@@ -127,7 +127,7 @@ IF NOT EXISTS
 )
 BEGIN
     CREATE UNIQUE INDEX UX_Users_Email
-    ON dbo.Users(Email);
+    ON dbo.Users(Email); --Bir mail aynı olamaz.
 END;
 GO
 
@@ -141,7 +141,7 @@ IF NOT EXISTS
 BEGIN
     CREATE UNIQUE INDEX UX_Users_CustomerID
     ON dbo.Users(CustomerID)
-    WHERE CustomerID IS NOT NULL;
+    WHERE CustomerID IS NOT NULL; --User ID de tekilleştirilir ve null olamaz.
 END;
 GO
 
@@ -157,7 +157,7 @@ IF NOT EXISTS
       AND name = N'IX_Accounts_CustomerID'
 )
 BEGIN
-    CREATE INDEX IX_Accounts_CustomerID
+    CREATE INDEX IX_Accounts_CustomerID --Bir kullanıcının birden fazla hesabı olabileceği için tekelleştirmiyoruz.
     ON dbo.Accounts(CustomerID);
 END;
 GO
@@ -174,7 +174,7 @@ IF NOT EXISTS
       AND name = N'IX_Transactions_Date'
 )
 BEGIN
-    CREATE INDEX IX_Transactions_Date
+    CREATE INDEX IX_Transactions_Date --Artan zamanda tarihe göre arama yapmamızı sağlar.
     ON dbo.Transactions(TransactionDate ASC);
 END;
 GO
@@ -187,7 +187,7 @@ IF NOT EXISTS
       AND name = N'IX_Transactions_FromAccount'
 )
 BEGIN
-    CREATE INDEX IX_Transactions_FromAccount
+    CREATE INDEX IX_Transactions_FromAccount --Hesaptan çıkan hareketleri tarihe göre getirir.
     ON dbo.Transactions
     (
         FromAccountID ASC,
@@ -204,7 +204,7 @@ IF NOT EXISTS
       AND name = N'IX_Transactions_ToAccount'
 )
 BEGIN
-    CREATE INDEX IX_Transactions_ToAccount
+    CREATE INDEX IX_Transactions_ToAccount --Hesaba gelen hareketleri tarihe göre getirir.
     ON dbo.Transactions
     (
         ToAccountID ASC,
@@ -225,7 +225,7 @@ IF NOT EXISTS
       AND name = N'IX_FraudAlerts_TransactionID'
 )
 BEGIN
-    CREATE INDEX IX_FraudAlerts_TransactionID
+    CREATE INDEX IX_FraudAlerts_TransactionID  --Banka hareketine göre fraud alert getirir.
     ON dbo.FraudAlerts(TransactionID);
 END;
 GO
@@ -234,7 +234,7 @@ IF NOT EXISTS
 (
     SELECT 1
     FROM sys.indexes
-    WHERE object_id = OBJECT_ID(N'dbo.FraudAlerts')
+    WHERE object_id = OBJECT_ID(N'dbo.FraudAlerts') --Inceleme durumuna gör fraud alert getirir.
       AND name = N'IX_FraudAlerts_ReviewStatus'
 )
 BEGIN
@@ -259,7 +259,7 @@ IF NOT EXISTS
       AND name = N'IX_AuditLogs_UserID'
 )
 BEGIN
-    CREATE INDEX IX_AuditLogs_UserID
+    CREATE INDEX IX_AuditLogs_UserID -- Belirli kullanıcının audit kayıtlarını getirir.
     ON dbo.AuditLogs
     (
         UserID ASC,
@@ -280,7 +280,7 @@ IF NOT EXISTS
       AND name = N'IX_Notifications_Customer'
 )
 BEGIN
-    CREATE INDEX IX_Notifications_Customer
+    CREATE INDEX IX_Notifications_Customer -- Müşteriye göre bilfirimleri getirir.
     ON dbo.Notifications
     (
         CustomerID ASC,
@@ -302,7 +302,7 @@ IF NOT EXISTS
       AND name = N'IX_CreditCardApplications_Customer'
 )
 BEGIN
-    CREATE INDEX IX_CreditCardApplications_Customer
+    CREATE INDEX IX_CreditCardApplications_Customer --customer ıd ye göre credi başvuru durumunu getirir.
     ON dbo.CreditCardApplications
     (
         CustomerID ASC,
@@ -324,7 +324,7 @@ IF NOT EXISTS
       AND name = N'IX_CreditCards_Customer'
 )
 BEGIN
-    CREATE INDEX IX_CreditCards_Customer
+    CREATE INDEX IX_CreditCards_Customer --Customer id ye göre cart durmunu verir.
     ON dbo.CreditCards
     (
         CustomerID ASC,
@@ -345,7 +345,7 @@ IF NOT EXISTS
       AND name = N'IX_CreditCardTransactions_Card'
 )
 BEGIN
-    CREATE INDEX IX_CreditCardTransactions_Card
+    CREATE INDEX IX_CreditCardTransactions_Card --Kredi kart id sine göre tarih bilgisini verir.
     ON dbo.CreditCardTransactions
     (
         CreditCardID ASC,
@@ -365,7 +365,7 @@ BEGIN
     CREATE UNIQUE INDEX
         UX_CreditCardTransactions_BankTransaction
     ON dbo.CreditCardTransactions(BankTransactionID)
-    WHERE BankTransactionID IS NOT NULL;
+    WHERE BankTransactionID IS NOT NULL; --Aynı banka hareketinin farklı iki kart hareketine bağlanmsını engeller.
 END;
 GO
 
@@ -381,7 +381,7 @@ IF NOT EXISTS
       AND name = N'IX_CustomerAddresses_Customer'
 )
 BEGIN
-    CREATE INDEX IX_CustomerAddresses_Customer
+    CREATE INDEX IX_CustomerAddresses_Customer --Id'ye göre address tipini getirir.
     ON dbo.CustomerAddresses
     (
         CustomerID,
@@ -401,7 +401,7 @@ IF NOT EXISTS
 BEGIN
     CREATE UNIQUE INDEX UX_CustomerAddresses_Primary
     ON dbo.CustomerAddresses(CustomerID)
-    WHERE IsPrimary = 1;
+    WHERE IsPrimary = 1; --Bir kullanıcının sadece 1 tane birincil adresi olabilir.
 END;
 GO
 
@@ -420,7 +420,7 @@ BEGIN
     CREATE INDEX IX_CustomerContacts_Customer
     ON dbo.CustomerContacts
     (
-        CustomerID,
+        CustomerID,  --Customer id ye  göre iletişim kayıt türüne göre artamayı destekler.
         ContactType
     );
 END;
@@ -480,7 +480,7 @@ IF NOT EXISTS
       AND name = N'IX_Beneficiaries_Customer_Active'
 )
 BEGIN
-    CREATE INDEX IX_Beneficiaries_Customer_Active
+    CREATE INDEX IX_Beneficiaries_Customer_Active --Etkin transfer alıcılarını ada göre okumayı destekler.
     ON dbo.Beneficiaries
     (
         CustomerID,
@@ -502,7 +502,7 @@ IF NOT EXISTS
       AND name = N'IX_AccountStatusHistory_Account'
 )
 BEGIN
-    CREATE INDEX IX_AccountStatusHistory_Account
+    CREATE INDEX IX_AccountStatusHistory_Account --Account id ye göre son değişim tarihini verir.
     ON dbo.AccountStatusHistory
     (
         AccountID,
@@ -519,7 +519,7 @@ IF NOT EXISTS
       AND name = N'IX_AccountStatusHistory_User'
 )
 BEGIN
-    CREATE INDEX IX_AccountStatusHistory_User
+    CREATE INDEX IX_AccountStatusHistory_User --Kullanıcısı belli olan durum kayıtlarını kullanıcıya göre listeler.
     ON dbo.AccountStatusHistory(ChangedByUserID)
     WHERE ChangedByUserID IS NOT NULL;
 END;
@@ -537,7 +537,7 @@ IF NOT EXISTS
       AND name = N'IX_TransactionNotes_Transaction'
 )
 BEGIN
-    CREATE INDEX IX_TransactionNotes_Transaction
+    CREATE INDEX IX_TransactionNotes_Transaction --Transaction id ve tarihe göre işlem notlarını gösterir.
     ON dbo.TransactionNotes
     (
         TransactionID,
@@ -554,7 +554,7 @@ IF NOT EXISTS
       AND name = N'IX_TransactionNotes_User'
 )
 BEGIN
-    CREATE INDEX IX_TransactionNotes_User
+    CREATE INDEX IX_TransactionNotes_User -- User tarafından oluşturulan notları kullanıcıya göe getirir.
     ON dbo.TransactionNotes(CreatedByUserID)
     WHERE CreatedByUserID IS NOT NULL;
 END;
@@ -572,11 +572,11 @@ IF NOT EXISTS
       AND name = N'IX_FraudReviewHistory_Alert'
 )
 BEGIN
-    CREATE INDEX IX_FraudReviewHistory_Alert
+    CREATE INDEX IX_FraudReviewHistory_Alert --Alarm id ve tarihine göre inceleme geçmişini getirir.
     ON dbo.FraudAlertReviewHistory
     (
         AlertID,
-        ReviewedAt DESC
+        ReviewedAt DESC --En son yapılan zamandan itibaren getirir.
     );
 END;
 GO
@@ -589,21 +589,14 @@ IF NOT EXISTS
       AND name = N'IX_FraudReviewHistory_User'
 )
 BEGIN
-    CREATE INDEX IX_FraudReviewHistory_User
+    CREATE INDEX IX_FraudReviewHistory_User  --Kullanıcı kimliğine göre inceleme geçmişini getirir.
     ON dbo.FraudAlertReviewHistory(ReviewedByUserID)
     WHERE ReviewedByUserID IS NOT NULL;
 END;
 GO
 
 -- ============================================================
--- 19. CREDIT CARD BILLING SETTINGS
--- ============================================================
-
--- CreditCardID already has a UNIQUE constraint in 01_schema.
--- No duplicate index is required for that column.
-
--- ============================================================
--- 20. ACCOUNT DAILY BALANCES INDEXES
+-- 19. ACCOUNT DAILY BALANCES INDEXES
 -- ============================================================
 
 -- AccountID + BalanceDate already has a UNIQUE constraint
@@ -617,7 +610,7 @@ IF NOT EXISTS
       AND name = N'IX_AccountDailyBalances_Date'
 )
 BEGIN
-    CREATE INDEX IX_AccountDailyBalances_Date
+    CREATE INDEX IX_AccountDailyBalances_Date --Tarihe ve hesap kimliğine göre hesabın günlük bakiyesini getirir.
     ON dbo.AccountDailyBalances
     (
         BalanceDate DESC,
@@ -632,7 +625,7 @@ END;
 GO
 
 -- ============================================================
--- 21. FRAUD RISK ASSESSMENTS INDEXES
+-- 20. FRAUD RISK ASSESSMENTS INDEXES
 -- ============================================================
 
 -- AlertID already has a UNIQUE constraint
@@ -646,12 +639,12 @@ IF NOT EXISTS
       AND name = N'IX_FraudRiskAssessments_Level'
 )
 BEGIN
-    CREATE INDEX IX_FraudRiskAssessments_Level
+    CREATE INDEX IX_FraudRiskAssessments_Level -- Risk seviyesi,inceleme durumu ve değerlendirme tarihine göre değerlendirmeleri getirir.
     ON dbo.FraudRiskAssessments
     (
         RiskLevel,
         ReviewStatus,
-        AssessedAt DESC
+        AssessedAt DESC --En yeniden itibaren getirir.
     )
     INCLUDE
     (
@@ -661,10 +654,10 @@ END;
 GO
 
 -- ============================================================
--- 22. VERIFY CHECK CONSTRAINTS
+-- 21. VERIFY CHECK CONSTRAINTS
 -- ============================================================
 
-SELECT
+SELECT --Constraintsler üzerinden veritabanındaki table'ları okur
     OBJECT_NAME(parent_object_id) AS TableName,
     name AS ConstraintName,
     is_disabled AS IsDisabled,
@@ -682,10 +675,10 @@ ORDER BY
 GO
 
 -- ============================================================
--- 23. VERIFY FOREIGN KEYS
+-- 22. VERIFY FOREIGN KEYS
 -- ============================================================
 
-SELECT
+SELECT --Foreign keylere göre child ve parent tableları getirir.
     OBJECT_NAME(parent_object_id) AS ChildTable,
     name AS ForeignKeyName,
     OBJECT_NAME(referenced_object_id) AS ParentTable,
@@ -704,9 +697,10 @@ ORDER BY
 GO
 
 -- ============================================================
--- 24. VERIFY INDEXES
+-- 23. VERIFY INDEXES
 -- ============================================================
 
+--Tablo ve index isimlerine göre indeksleri okur.
 SELECT
     OBJECT_NAME(object_id) AS TableName,
     name AS IndexName,
@@ -726,9 +720,10 @@ ORDER BY
 GO
 
 -- ============================================================
--- 25. VERIFY TABLE COUNT
+-- 24. VERIFY TABLE COUNT
 -- ============================================================
 
+--Veritabanındaki tabloların sayısını sistem nesnesinin dışında kalanlardan alır sayar ve verir.
 DECLARE @TableCount INT;
 
 SELECT @TableCount = COUNT(*)

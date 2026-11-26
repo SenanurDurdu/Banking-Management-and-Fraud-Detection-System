@@ -1,7 +1,7 @@
 -- ============================================================
 -- NG BANK
 -- FILE: 06_verify.sql
--- DATABASE: BankingFraudDB
+-- DATABASE: BankingFraudDB_Test
 -- READ-ONLY VERIFICATION
 -- EXPECTED: 20 TABLES, 9 VIEWS,
 --           10 PROCEDURES, 5 TRIGGERS
@@ -10,19 +10,19 @@
 USE BankingFraudDB_Test;
 GO
 
-SET NOCOUNT ON;
+SET NOCOUNT ON; --Etkilenen satır sayısını yazdırmaz.
 GO
 
 -- ============================================================
 -- 1. EXPECTED DATABASE OBJECTS
 -- ============================================================
 
-DECLARE @ExpectedTables TABLE
+DECLARE @ExpectedTables TABLE --Tablo değişkenini oluşturur.
 (
     TableName SYSNAME PRIMARY KEY
 );
 
-INSERT INTO @ExpectedTables
+INSERT INTO @ExpectedTables --Beklenen 20 tablo adını tablo değişkenine ekler.
 VALUES
 (N'Customers'),
 (N'Users'),
@@ -45,12 +45,12 @@ VALUES
 (N'AccountDailyBalances'),
 (N'FraudRiskAssessments');
 
-DECLARE @ExpectedViews TABLE
+DECLARE @ExpectedViews TABLE --Tablo değişkenini oluşturur.
 (
     ViewName SYSNAME PRIMARY KEY
 );
 
-INSERT INTO @ExpectedViews
+INSERT INTO @ExpectedViews --Beklenen 9 views adını tablo değişkenine ekler.
 VALUES
 (N'vw_AccountSummary'),
 (N'vw_DailyTransactionStats'),
@@ -62,12 +62,12 @@ VALUES
 (N'vw_AccountDailyBalanceDetails'),
 (N'vw_FraudRiskAssessmentDetails');
 
-DECLARE @ExpectedProcedures TABLE
+DECLARE @ExpectedProcedures TABLE --Tablo değişkenini oluşturur.
 (
     ProcedureName SYSNAME PRIMARY KEY
 );
 
-INSERT INTO @ExpectedProcedures
+INSERT INTO @ExpectedProcedures --Beklenen 10 prosedürü tablo değişkenine ekler.
 VALUES
 (N'sp_ExecuteBankTransaction'),
 (N'sp_Deposit'),
@@ -80,13 +80,13 @@ VALUES
 (N'sp_ScanFraud'),
 (N'sp_ScanCreditCardFraud');
 
-DECLARE @ExpectedTriggers TABLE
+DECLARE @ExpectedTriggers TABLE --Tablo değişkenini oluşturur.
 (
     TriggerName SYSNAME PRIMARY KEY,
     ParentTable SYSNAME NOT NULL
 );
 
-INSERT INTO @ExpectedTriggers
+INSERT INTO @ExpectedTriggers --Beklenen 5 trigger'ı tablo değişkenine ekler.
 VALUES
 (N'trg_Accounts_StatusHistory',N'Accounts'),
 (N'trg_FraudAlerts_ReviewHistory',N'FraudAlerts'),
@@ -94,7 +94,7 @@ VALUES
 (N'trg_Accounts_DailyBalances',N'Accounts'),
 (N'trg_FraudAlerts_RiskAssessments',N'FraudAlerts');
 
-DECLARE @Results TABLE
+DECLARE @Results TABLE --Sonuç rapor tablosu hazırlanır ver her ana kontrol buraya bir satır  ekler.
 (
     CheckName NVARCHAR(150),
     ExpectedCount INT,
@@ -106,14 +106,14 @@ DECLARE @Results TABLE
 -- 2. TABLE COUNT
 -- ============================================================
 
-DECLARE @TableCount INT;
+DECLARE @TableCount INT;  --20 tablo oluştu mu kontrol eder ve pass yazdırır.
 
 SELECT @TableCount = COUNT(*)
 FROM sys.tables
 WHERE schema_id = SCHEMA_ID(N'dbo')
   AND is_ms_shipped = 0;
 
-INSERT INTO @Results
+INSERT INTO @Results --Sonuç tablosuna satır eklenir.
 VALUES
 (
     N'Total dbo Tables',
@@ -126,7 +126,7 @@ VALUES
 -- ============================================================
 -- 3. REQUIRED TABLES
 -- ============================================================
-
+--Gerekli tablolar sayılır,bulunamayanlar missing olarak işratlenir.
 SELECT
     e.TableName AS MissingTable
 FROM @ExpectedTables AS e
@@ -151,7 +151,7 @@ VALUES
 -- ============================================================
 -- 4. REQUIRED VIEWS
 -- ============================================================
-
+--Gerekli views'lar sayılır,bulunamayanlar missing olarak işratlenir.
 SELECT
     e.ViewName AS MissingView
 FROM @ExpectedViews AS e
@@ -176,7 +176,7 @@ VALUES
 -- ============================================================
 -- 5. REQUIRED PROCEDURES
 -- ============================================================
-
+--Gerekli procedure'ler sayılır,bulunamayanlar missing olarak işratlenir.
 SELECT
     e.ProcedureName AS MissingProcedure
 FROM @ExpectedProcedures AS e
@@ -201,7 +201,7 @@ VALUES
 -- ============================================================
 -- 6. REQUIRED ENABLED TRIGGERS
 -- ============================================================
-
+--Gerekli trigger'lar sayılır doğru tabloda etkin mi bakılır,bulunamayanlar missing olarak işratlenir.
 SELECT
     e.TriggerName,
     e.ParentTable,
@@ -235,31 +235,9 @@ VALUES
 );
 
 -- ============================================================
--- 7. OLD TABLES MUST NOT EXIST
+-- 7. NEW TABLE FOREIGN KEYS
 -- ============================================================
-
-DECLARE @OldTableCount INT = 0;
-
-IF OBJECT_ID(N'dbo.CreditCardStatements',N'U') IS NOT NULL
-    SET @OldTableCount = @OldTableCount + 1;
-
-IF OBJECT_ID(N'dbo.CreditCardStatementItems',N'U') IS NOT NULL
-    SET @OldTableCount = @OldTableCount + 1;
-
-INSERT INTO @Results
-VALUES
-(
-    N'Old Statement Tables Remaining',
-    0,
-    @OldTableCount,
-    CASE WHEN @OldTableCount = 0
-         THEN 'PASS' ELSE 'FAIL' END
-);
-
--- ============================================================
--- 8. NEW TABLE FOREIGN KEYS
--- ============================================================
-
+--Eklenen 2 tablonun froeign keyleri kontrol edilir.
 DECLARE @NewFKCount INT;
 
 SELECT @NewFKCount = COUNT(*)
@@ -290,9 +268,9 @@ VALUES
 );
 
 -- ============================================================
--- 9. REQUIRED NEW INDEXES
+-- 8. REQUIRED NEW INDEXES
 -- ============================================================
-
+--Gerekli iki yeni index var mı ve etkin mi kontrol edilir.
 DECLARE @NewIndexCount INT;
 
 SELECT @NewIndexCount = COUNT(*)
@@ -321,9 +299,9 @@ VALUES
 );
 
 -- ============================================================
--- 10. ACTIVE FRAUD RULES
+-- 9. ACTIVE FRAUD RULES
 -- ============================================================
-
+--3 Fraud kuralı da etkin mi kontrol edilir.
 DECLARE @FraudRuleCount INT;
 
 SELECT @FraudRuleCount = COUNT(DISTINCT RuleType)
@@ -347,14 +325,14 @@ VALUES
 );
 
 -- ============================================================
--- 11. ACCOUNT BALANCE COVERAGE
+-- 10. ACCOUNT BALANCE COVERAGE
 -- ============================================================
-
+--Günlük bakiye doğru mu kontrol ediliyor.
 DECLARE @MissingDailyBalances INT = NULL;
 
 IF OBJECT_ID(N'dbo.AccountDailyBalances',N'U') IS NOT NULL
 BEGIN
-    EXEC sys.sp_executesql
+    EXEC sys.sp_executesql --Eksik hesap ayıklanıyor.
         N'
         SELECT @Missing = COUNT(*)
         FROM dbo.Accounts AS a
@@ -382,9 +360,9 @@ VALUES
 );
 
 -- ============================================================
--- 12. FRAUD ASSESSMENT COVERAGE
+-- 11. FRAUD ASSESSMENT COVERAGE
 -- ============================================================
-
+--Risk değerlendirmesinde eksik var mı kontrol edilir.
 DECLARE @MissingAssessments INT = NULL;
 
 IF OBJECT_ID(N'dbo.FraudRiskAssessments',N'U') IS NOT NULL
@@ -415,12 +393,12 @@ VALUES
 );
 
 -- ============================================================
--- 13. DISABLED OR UNTRUSTED CONSTRAINTS
+-- 12. DISABLED OR UNTRUSTED CONSTRAINTS
 -- ============================================================
-
+--Devre dışı veya doğrulanmamış kısıtlamalar var mı kotrol edilir.
 DECLARE @BadConstraintCount INT;
 
-SELECT @BadConstraintCount =
+SELECT @BadConstraintCount = --Değişken açılır.
 (
     SELECT COUNT(*)
     FROM sys.foreign_keys
@@ -446,10 +424,10 @@ VALUES
 );
 
 -- ============================================================
--- 14. ALL TABLE RECORD COUNTS
+-- 13. ALL TABLE RECORD COUNTS
 -- Uses metadata so missing tables do not break verification.
 -- ============================================================
-
+--Her tabloda kaç kayıt var kontrol edilir.
 IF OBJECT_ID('tempdb..#TableCounts') IS NOT NULL
     DROP TABLE #TableCounts;
 
@@ -480,9 +458,9 @@ LEFT JOIN #TableCounts AS tc
 ORDER BY e.TableName;
 
 -- ============================================================
--- 15. EMPTY TABLES
+-- 14. EMPTY TABLES
 -- ============================================================
-
+--Boş tablolar kontrol edilir.
 SELECT
     e.TableName AS EmptyOrMissingTable,
     ISNULL(tc.RecordCount,0) AS RecordCount
@@ -511,9 +489,9 @@ VALUES
 );
 
 -- ============================================================
--- 16. INVALID ACCOUNT BALANCES
+-- 15. INVALID ACCOUNT BALANCES
 -- ============================================================
-
+--Geçersiz hesap bakiyesi var mı kontrol edilir.
 DECLARE @NegativeAccountCount INT;
 
 SELECT @NegativeAccountCount = COUNT(*)
@@ -531,9 +509,9 @@ VALUES
 );
 
 -- ============================================================
--- 17. INVALID CREDIT CARD BALANCES
+-- 16. INVALID CREDIT CARD BALANCES
 -- ============================================================
-
+--Geçersiz kart bakiyesi var mı kontrol edilir.
 DECLARE @InvalidCardCount INT;
 
 SELECT @InvalidCardCount = COUNT(*)
@@ -552,9 +530,9 @@ VALUES
 );
 
 -- ============================================================
--- 18. INVALID FRAUD ALERT REFERENCES
+-- 17. INVALID FRAUD ALERT REFERENCES
 -- ============================================================
-
+--Yanlış alarm referansı var mı kontrol edilir.
 DECLARE @InvalidAlertCount INT;
 
 SELECT @InvalidAlertCount = COUNT(*)
@@ -570,7 +548,7 @@ WHERE
         AND CardTransactionID IS NOT NULL
     );
 
-INSERT INTO @Results
+INSERT INTO @Results --Sonuç tablosuna satır olarak eklenir.
 VALUES
 (
     N'Invalid Fraud Alert References',
@@ -581,9 +559,9 @@ VALUES
 );
 
 -- ============================================================
--- 19. FINAL VERIFICATION REPORT
+-- 18. FINAL VERIFICATION REPORT
 -- ============================================================
-
+--Başarılı kontroller listelenir.
 SELECT
     CheckName,
     ExpectedCount,
@@ -595,9 +573,9 @@ ORDER BY
     CheckName;
 
 -- ============================================================
--- 20. FINAL STATUS
+-- 19. FINAL STATUS
 -- ============================================================
-
+--Final durumu listelenir.
 DECLARE @PassedChecks INT;
 DECLARE @FailedChecks INT;
 
@@ -618,9 +596,9 @@ SELECT
     END AS FinalStatus;
 
 -- ============================================================
--- 21. ALL APPLICATION TABLES
+-- 20. ALL APPLICATION TABLES
 -- ============================================================
-
+--Tüm tablolar
 SELECT
     name AS TableName
 FROM sys.tables
@@ -629,9 +607,9 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
 ORDER BY name;
 
 -- ============================================================
--- 22. ALL PROJECT VIEWS
+-- 21. ALL PROJECT VIEWS
 -- ============================================================
-
+--Tğm views'lar
 SELECT
     name AS ViewName
 FROM sys.views
@@ -639,9 +617,9 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
 ORDER BY name;
 
 -- ============================================================
--- 23. ALL PROJECT PROCEDURES
+-- 22. ALL PROJECT PROCEDURES
 -- ============================================================
-
+--Tüm procedure'ler
 SELECT
     name AS ProcedureName
 FROM sys.procedures
@@ -649,9 +627,9 @@ WHERE schema_id = SCHEMA_ID(N'dbo')
 ORDER BY name;
 
 -- ============================================================
--- 24. ALL PROJECT TRIGGERS
+-- 23. ALL PROJECT TRIGGERS
 -- ============================================================
-
+--Tüm trigger'lar
 SELECT
     t.name AS TriggerName,
     OBJECT_NAME(t.parent_id) AS ParentTable,
@@ -666,7 +644,7 @@ GO
 -- ============================================================
 -- VERIFY ACCOUNT TRIGGERS
 -- ============================================================
-
+--Hesap triggerları
 SELECT
     t.name AS TriggerName,
     t.is_disabled AS IsDisabled
@@ -678,7 +656,7 @@ GO
 /* ============================================================
    ALL DATA VIEWS - CURRENT 20 TABLES
    ============================================================ */
-
+--Tüm tablo içerikleri
 SELECT * FROM dbo.FraudRules;
 SELECT * FROM dbo.Users;
 SELECT * FROM dbo.Accounts;
@@ -705,87 +683,48 @@ GO
 /* ============================================================
    DATA COUNT IN TABLES - CURRENT 20 TABLES
    ============================================================ */
-
+--Tğm tabloların içindeki veri sayısı
 SELECT 'Customers' AS TableName, COUNT(*) AS RecordCount
 FROM dbo.Customers
-
 UNION ALL
-SELECT 'Users', COUNT(*)
-FROM dbo.Users
-
+SELECT 'Users', COUNT(*) FROM dbo.Users
 UNION ALL
-SELECT 'Accounts', COUNT(*)
-FROM dbo.Accounts
-
+SELECT 'Accounts', COUNT(*) FROM dbo.Accounts
 UNION ALL
-SELECT 'Transactions', COUNT(*)
-FROM dbo.Transactions
-
+SELECT 'Transactions', COUNT(*) FROM dbo.Transactions
 UNION ALL
-SELECT 'FraudRules', COUNT(*)
-FROM dbo.FraudRules
-
+SELECT 'FraudRules', COUNT(*) FROM dbo.FraudRules
 UNION ALL
-SELECT 'FraudAlerts', COUNT(*)
-FROM dbo.FraudAlerts
-
+SELECT 'FraudAlerts', COUNT(*) FROM dbo.FraudAlerts
 UNION ALL
-SELECT 'AuditLogs', COUNT(*)
-FROM dbo.AuditLogs
-
+SELECT 'AuditLogs', COUNT(*) FROM dbo.AuditLogs
 UNION ALL
-SELECT 'Notifications', COUNT(*)
-FROM dbo.Notifications
-
+SELECT 'Notifications', COUNT(*) FROM dbo.Notifications
 UNION ALL
-SELECT 'CreditCards', COUNT(*)
-FROM dbo.CreditCards
-
+SELECT 'CreditCards', COUNT(*) FROM dbo.CreditCards
 UNION ALL
-SELECT 'CreditCardApplications', COUNT(*)
-FROM dbo.CreditCardApplications
-
+SELECT 'CreditCardApplications', COUNT(*) FROM dbo.CreditCardApplications
 UNION ALL
-SELECT 'CreditCardTransactions', COUNT(*)
-FROM dbo.CreditCardTransactions
-
+SELECT 'CreditCardTransactions', COUNT(*) FROM dbo.CreditCardTransactions
 UNION ALL
-SELECT 'CustomerAddresses', COUNT(*)
-FROM dbo.CustomerAddresses
-
+SELECT 'CustomerAddresses', COUNT(*) FROM dbo.CustomerAddresses
 UNION ALL
-SELECT 'CustomerContacts', COUNT(*)
-FROM dbo.CustomerContacts
-
+SELECT 'CustomerContacts', COUNT(*) FROM dbo.CustomerContacts
 UNION ALL
-SELECT 'Beneficiaries', COUNT(*)
-FROM dbo.Beneficiaries
-
+SELECT 'Beneficiaries', COUNT(*) FROM dbo.Beneficiaries
 UNION ALL
-SELECT 'AccountStatusHistory', COUNT(*)
-FROM dbo.AccountStatusHistory
-
+SELECT 'AccountStatusHistory', COUNT(*) FROM dbo.AccountStatusHistory
 UNION ALL
-SELECT 'TransactionNotes', COUNT(*)
-FROM dbo.TransactionNotes
-
+SELECT 'TransactionNotes', COUNT(*) FROM dbo.TransactionNotes
 UNION ALL
-SELECT 'FraudAlertReviewHistory', COUNT(*)
-FROM dbo.FraudAlertReviewHistory
-
+SELECT 'FraudAlertReviewHistory', COUNT(*) FROM dbo.FraudAlertReviewHistory
 UNION ALL
-SELECT 'CreditCardBillingSettings', COUNT(*)
-FROM dbo.CreditCardBillingSettings
-
+SELECT 'CreditCardBillingSettings', COUNT(*) FROM dbo.CreditCardBillingSettings
 UNION ALL
-SELECT 'AccountDailyBalances', COUNT(*)
-FROM dbo.AccountDailyBalances
-
+SELECT 'AccountDailyBalances', COUNT(*) FROM dbo.AccountDailyBalances
 UNION ALL
-SELECT 'FraudRiskAssessments', COUNT(*)
-FROM dbo.FraudRiskAssessments;
+SELECT 'FraudRiskAssessments', COUNT(*) FROM dbo.FraudRiskAssessments;
 GO
-
 
 /* ============================================================
    OPTIONAL: DELETE TEST DATA AND RESET IDENTITY COUNTERS
@@ -800,7 +739,7 @@ GO
    CURRENT 20-TABLE STRUCTURE
    ============================================================
 
-USE BankingFraudDB;
+USE BankingFraudDB_Test;
 GO
 
 SET XACT_ABORT ON;

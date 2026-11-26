@@ -1,61 +1,61 @@
 -- ============================================================
 -- NG BANK
 -- FILE: 01_schema.sql
--- DATABASE: BankingFraudDB
+-- DATABASE: BankingFraudDB_Test
 -- PURPOSE: Create all 20 application tables from the start
 -- TARGET: Microsoft SQL Server
 -- NOTE: Run on a new, empty test database
 -- ============================================================
 
-IF DB_ID(N'BankingFraudDB_Test') IS NULL
+IF DB_ID(N'BankingFraudDB_Test') IS NULL --Veritabanının kimliği aranıyor.
 BEGIN
-    CREATE DATABASE BankingFraudDB_Test;
-END;
-GO
+    CREATE DATABASE BankingFraudDB_Test; --Yoksa yeni oluşturuluyor.
+END; --Koşulu kapatıyor.
+GO --Oluşturma bölümünü ayrı bir komut grubu olarak gönderir.
 
-USE BankingFraudDB_Test;
+USE BankingFraudDB_Test; --Oluşturulduktan sonra kullanılacak veritabanı seçilir.
 GO
 
 -- ============================================================
 -- 1. CUSTOMERS
 -- ============================================================
 
-IF OBJECT_ID(N'dbo.Customers', N'U') IS NULL
+IF OBJECT_ID(N'dbo.Customers', N'U') IS NULL --Eğer müşteri tablosu ve nesnesi bulunmazsa, oluşturulur.
 BEGIN
-    CREATE TABLE dbo.Customers
+    CREATE TABLE dbo.Customers --Tablo oluşturulur.
     (
-        CustomerID INT IDENTITY(1,1)
+        CustomerID INT IDENTITY(1,1) --Otomatik müşteri numarasıdır.
             CONSTRAINT PK_Customers PRIMARY KEY,
 
-        FirstName NVARCHAR(60) NOT NULL,
+        FirstName NVARCHAR(60) NOT NULL,--Unicode olarak belirlenir.
         LastName NVARCHAR(60) NOT NULL,
         NationalID CHAR(11) NOT NULL,
         Phone NVARCHAR(20) NULL,
         Email NVARCHAR(120) NULL,
         Address NVARCHAR(255) NULL,
 
-        CreatedAt DATETIME2 NOT NULL
+        CreatedAt DATETIME2 NOT NULL --Zorunlu oluşturulan tarih alanıdır.
             CONSTRAINT DF_Customers_CreatedAt
-            DEFAULT SYSDATETIME(),
+            DEFAULT SYSDATETIME(), --Sistemin şu an ki tarihi kullanılır.
 
-        IsActive BIT NOT NULL
+        IsActive BIT NOT NULL --Aktifse 1 değilse 0 olur.Default olarak aktif olarak başlanır.
             CONSTRAINT DF_Customers_IsActive
             DEFAULT 1,
 
-        CONSTRAINT UQ_Customers_NationalID
+        CONSTRAINT UQ_Customers_NationalID --NationalID tekilleştirilir.
             UNIQUE (NationalID),
 
-        CONSTRAINT UQ_Customers_Email
+        CONSTRAINT UQ_Customers_Email --Mail tekilleştirilir.
             UNIQUE (Email)
-    );
-END;
-GO
+    );--Tablo tanımı kapanır.
+END;--Koşul kapanır.
+GO--Komut grubu kapanır.
 
 -- ============================================================
 -- 2. USERS
 -- ============================================================
 
-IF OBJECT_ID(N'dbo.Users', N'U') IS NULL
+IF OBJECT_ID(N'dbo.Users', N'U') IS NULL --Eğer user tablosu ve nesnesi yoksa oluşturulur.
 BEGIN
     CREATE TABLE dbo.Users
     (
@@ -77,14 +77,14 @@ BEGIN
 
         LastLoginAt DATETIME2 NULL,
 
-        CONSTRAINT FK_Users_Customers
+        CONSTRAINT FK_Users_Customers  --Customer id'sinin customer tablosu içerisinde bulunmasını zorunlu kılar.
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID),
 
         CONSTRAINT CK_Users_Role
             CHECK (Role IN ('Admin', 'Customer')),
 
-        CONSTRAINT CK_Users_RoleCustomer
+        CONSTRAINT CK_Users_RoleCustomer --Yalnızca admin ve user rollerine izin verilir.
             CHECK
             (
                 (Role = 'Admin' AND CustomerID IS NULL)
@@ -110,11 +110,11 @@ BEGIN
         AccountNumber CHAR(18) NOT NULL,
         AccountType VARCHAR(20) NOT NULL,
 
-        Balance DECIMAL(18,2) NOT NULL
+        Balance DECIMAL(18,2) NOT NULL --Başlangıç  güncel bakiye 0 ile başlanır.
             CONSTRAINT DF_Accounts_Balance
             DEFAULT 0,
 
-        Currency CHAR(3) NOT NULL
+        Currency CHAR(3) NOT NULL --Default para birimi belirlenir.
             CONSTRAINT DF_Accounts_Currency
             DEFAULT 'TRY',
 
@@ -122,25 +122,25 @@ BEGIN
             CONSTRAINT DF_Accounts_CreatedAt
             DEFAULT SYSDATETIME(),
 
-        IsActive BIT NOT NULL
+        IsActive BIT NOT NULL --Hesaplar oluşturulurken aktif olarak başlanır.
             CONSTRAINT DF_Accounts_IsActive
             DEFAULT 1,
 
-        IsFrozen BIT NOT NULL
+        IsFrozen BIT NOT NULL --Hesaplar unfrozen olarak başlar.
             CONSTRAINT DF_Accounts_IsFrozen
             DEFAULT 0,
 
-        CONSTRAINT FK_Accounts_Customers
-            FOREIGN KEY (CustomerID)
+        CONSTRAINT FK_Accounts_Customers --CustomerId customer tablosundan referans alınır.
+            FOREIGN KEY (CustomerID) --Her hesabı bir müşteriye bağlar, bir müşterinin birden fazla hesabı olabilir.
             REFERENCES dbo.Customers(CustomerID),
 
-        CONSTRAINT UQ_Accounts_AccountNumber
+        CONSTRAINT UQ_Accounts_AccountNumber --Hesap numaraları tekilleştirilir.
             UNIQUE (AccountNumber),
 
-        CONSTRAINT CK_Accounts_AccountType
+        CONSTRAINT CK_Accounts_AccountType --Hesap türü sadece iki tür olabilir.
             CHECK (AccountType IN ('Checking', 'Savings')),
 
-        CONSTRAINT CK_Accounts_Balance
+        CONSTRAINT CK_Accounts_Balance --Negatif hesap bakiyesi kullanılamaz bunu kontrol eder.
             CHECK (Balance >= 0)
     );
 END;
@@ -157,29 +157,29 @@ BEGIN
         TransactionID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_Transactions PRIMARY KEY,
 
-        FromAccountID INT NULL,
-        ToAccountID INT NULL,
+        FromAccountID INT NULL,--Kaynak hesap
+        ToAccountID INT NULL,--Hedef hesap
         TransactionType VARCHAR(20) NOT NULL,
         Amount DECIMAL(18,2) NOT NULL,
-        Description NVARCHAR(250) NULL,
+        Description NVARCHAR(250) NULL,--İsteğe bağlı işlem açıklaması.
 
         TransactionDate DATETIME2 NOT NULL
             CONSTRAINT DF_Transactions_Date
             DEFAULT SYSDATETIME(),
 
-        Status VARCHAR(20) NOT NULL
+        Status VARCHAR(20) NOT NULL --Default olarak işlem yapıldıktan sonra completed verilir.
             CONSTRAINT DF_Transactions_Status
             DEFAULT 'Completed',
 
-        CONSTRAINT FK_Transactions_FromAccount
+        CONSTRAINT FK_Transactions_FromAccount --Account id , account tablosundan referans alınır.
             FOREIGN KEY (FromAccountID)
             REFERENCES dbo.Accounts(AccountID),
 
-        CONSTRAINT FK_Transactions_ToAccount
+        CONSTRAINT FK_Transactions_ToAccount  --Account id , account tablosundan referans alınır.
             FOREIGN KEY (ToAccountID)
             REFERENCES dbo.Accounts(AccountID),
 
-        CONSTRAINT CK_Transactions_Type
+        CONSTRAINT CK_Transactions_Type --Işlem türleri sınırlandırılır.
             CHECK
             (
                 TransactionType IN
@@ -190,7 +190,7 @@ BEGIN
                 )
             ),
 
-        CONSTRAINT CK_Transactions_Amount
+        CONSTRAINT CK_Transactions_Amount --Negatif tutar harici tutarda işlem yapılır.
             CHECK (Amount > 0)
     );
 END;
@@ -209,9 +209,9 @@ BEGIN
 
         RuleName NVARCHAR(100) NOT NULL,
         RuleType VARCHAR(30) NOT NULL,
-        ThresholdValue DECIMAL(18,2) NOT NULL,
+        ThresholdValue DECIMAL(18,2) NOT NULL,--kural türüne göre işlem adedi ve pozitif olmak zorunda.
 
-        TimeWindowMinutes INT NOT NULL
+        TimeWindowMinutes INT NOT NULL --Dakika türünden 60 dakika süre verilir.
             CONSTRAINT DF_FraudRules_TimeWindow
             DEFAULT 60,
 
@@ -222,7 +222,7 @@ BEGIN
         CONSTRAINT UQ_FraudRules_Name
             UNIQUE (RuleName),
 
-        CONSTRAINT CK_FraudRules_Type
+        CONSTRAINT CK_FraudRules_Type --Rule tipleri sınırlandırılır.
             CHECK
             (
                 RuleType IN
@@ -244,7 +244,7 @@ IF OBJECT_ID(N'dbo.FraudAlerts', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.FraudAlerts
     (
-        AlertID BIGINT IDENTITY(1,1)
+        AlertID BIGINT IDENTITY(1,1) --AlerID benzersizdir.
             CONSTRAINT PK_FraudAlerts PRIMARY KEY,
 
         TransactionID BIGINT NULL,
@@ -252,11 +252,11 @@ BEGIN
         RuleID INT NOT NULL,
         AlertDescription NVARCHAR(500) NOT NULL,
 
-        RiskLevel VARCHAR(10) NOT NULL
+        RiskLevel VARCHAR(10) NOT NULL --Default olarak alert risk levelı belirlenir.
             CONSTRAINT DF_FraudAlerts_Risk
             DEFAULT 'Medium',
 
-        ReviewStatus VARCHAR(20) NOT NULL
+        ReviewStatus VARCHAR(20) NOT NULL --Inceleme statusu default olarak pending yapılır.
             CONSTRAINT DF_FraudAlerts_ReviewStatus
             DEFAULT 'Pending',
 
@@ -266,17 +266,17 @@ BEGIN
 
         ReviewedAt DATETIME2 NULL,
         ReviewedByUserID INT NULL,
-        ReviewNote NVARCHAR(500) NULL,
+        ReviewNote NVARCHAR(500) NULL, --Isteğe bağlı inceleme notudur.
 
-        CONSTRAINT FK_FraudAlerts_Transactions
+        CONSTRAINT FK_FraudAlerts_Transactions --TransactionID , transaction tablosundan referans alınır.
             FOREIGN KEY (TransactionID)
             REFERENCES dbo.Transactions(TransactionID),
 
-        CONSTRAINT FK_FraudAlerts_Rules
+        CONSTRAINT FK_FraudAlerts_Rules--RuleID, fraudRules tablosundan referans alınır.
             FOREIGN KEY (RuleID)
             REFERENCES dbo.FraudRules(RuleID),
 
-        CONSTRAINT FK_FraudAlerts_ReviewedBy
+        CONSTRAINT FK_FraudAlerts_ReviewedBy --inceleyen kullanıcı kimliği, User.IserID tablosundan referans alınır.
             FOREIGN KEY (ReviewedByUserID)
             REFERENCES dbo.Users(UserID),
 
@@ -284,17 +284,17 @@ BEGIN
             CHECK
             (
                 (
-                    TransactionID IS NOT NULL
+                    TransactionID IS NOT NULL --Banka işlemi dolu , kredi kartı işlemi boş olabilir.
                     AND CardTransactionID IS NULL
                 )
                 OR
                 (
-                    TransactionID IS NULL
+                    TransactionID IS NULL --Banka işlemi boş , kredi kartı işlemi dolu olabilir.
                     AND CardTransactionID IS NOT NULL
                 )
             ),
 
-        CONSTRAINT CK_FraudAlerts_ReviewStatus
+        CONSTRAINT CK_FraudAlerts_ReviewStatus --Inceleme statusleri sınırlandırılır.
             CHECK
             (
                 ReviewStatus IN
@@ -322,7 +322,7 @@ BEGIN
 
         ActionType VARCHAR(40) NULL,
         EntityName VARCHAR(40) NULL,
-        EntityID BIGINT NULL,
+        EntityID BIGINT NULL, --Etkilenen kaydın kimliğidir.
         Description NVARCHAR(500) NULL,
         UserID INT NULL,
 
@@ -356,7 +356,7 @@ BEGIN
             CONSTRAINT DF_Notifications_Type
             DEFAULT 'System',
 
-        IsRead BIT NOT NULL
+        IsRead BIT NOT NULL --Default olarak okunmadı '0' işaretlenir.
             CONSTRAINT DF_Notifications_IsRead
             DEFAULT 0,
 
@@ -364,7 +364,7 @@ BEGIN
             CONSTRAINT DF_Notifications_CreatedAt
             DEFAULT SYSDATETIME(),
 
-        CONSTRAINT FK_Notifications_Customers
+        CONSTRAINT FK_Notifications_Customers --Bildirimin var olan bir müşteriye ait olmasını sağlar.
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID)
     );
@@ -384,13 +384,13 @@ BEGIN
 
         CustomerID INT NOT NULL,
         CardType VARCHAR(20) NOT NULL,
-        RequestedLimit DECIMAL(18,2) NOT NULL,
+        RequestedLimit DECIMAL(18,2) NOT NULL,--Istenen limit
 
         Currency CHAR(3) NOT NULL
             CONSTRAINT DF_CreditCardApplications_Currency
             DEFAULT 'TRY',
 
-        ApplicationStatus VARCHAR(20) NOT NULL
+        ApplicationStatus VARCHAR(20) NOT NULL --Başvuru durumu default oalrak pending belirlenir.
             CONSTRAINT DF_CreditCardApplications_Status
             DEFAULT 'Pending',
 
@@ -398,22 +398,22 @@ BEGIN
             CONSTRAINT DF_CreditCardApplications_AppliedAt
             DEFAULT SYSDATETIME(),
 
-        ReviewedByUserID INT NULL,
+        ReviewedByUserID INT NULL, --Değerlendiren user id si
         ReviewedAt DATETIME2 NULL,
         ReviewNote NVARCHAR(500) NULL,
 
-        CONSTRAINT FK_CreditCardApplications_Customers
+        CONSTRAINT FK_CreditCardApplications_Customers --Başvuruyu yapan müşteri, customers tablosundan referans alınır.
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID),
 
-        CONSTRAINT FK_CreditCardApplications_Users
+        CONSTRAINT FK_CreditCardApplications_Users --Başvuruyu inceleyen kullanucı, kullanıcı tablosundan referans alınır.
             FOREIGN KEY (ReviewedByUserID)
             REFERENCES dbo.Users(UserID),
 
-        CONSTRAINT CK_CreditCardApplications_CardType
+        CONSTRAINT CK_CreditCardApplications_CardType --Kart tipleri sınırlandırılır.
             CHECK (CardType IN ('Standard', 'Gold')),
 
-        CONSTRAINT CK_CreditCardApplications_Limit
+        CONSTRAINT CK_CreditCardApplications_Limit --Kart limitleri sınırlandırılır.
             CHECK
             (
                 RequestedLimit IN
@@ -423,7 +423,7 @@ BEGIN
         CONSTRAINT CK_CreditCardApplications_Currency
             CHECK (Currency = 'TRY'),
 
-        CONSTRAINT CK_CreditCardApplications_Status
+        CONSTRAINT CK_CreditCardApplications_Status --Kart başvuru işlem statüleri sınırlandırılır.
             CHECK
             (
                 ApplicationStatus IN
@@ -446,12 +446,12 @@ BEGIN
 
         ApplicationID BIGINT NOT NULL,
         CustomerID INT NOT NULL,
-        LinkedAccountID INT NOT NULL,
+        LinkedAccountID INT NOT NULL,--Kartın bağlı olduğu hesaptır.
         CardNumber VARCHAR(19) NOT NULL,
         CardType VARCHAR(20) NOT NULL,
         CreditLimit DECIMAL(18,2) NOT NULL,
 
-        OutstandingBalance DECIMAL(18,2) NOT NULL
+        OutstandingBalance DECIMAL(18,2) NOT NULL --Var olan borç başlangıçta sıfır olarak belirlenir.
             CONSTRAINT DF_CreditCards_OutstandingBalance
             DEFAULT 0,
 
@@ -459,25 +459,25 @@ BEGIN
             CONSTRAINT DF_CreditCards_Currency
             DEFAULT 'TRY',
 
-        CardStatus VARCHAR(20) NOT NULL
+        CardStatus VARCHAR(20) NOT NULL --Kredi kartı onaylanınca durumu default olarak aktif olarak belirlenir.
             CONSTRAINT DF_CreditCards_Status
             DEFAULT 'Active',
 
-        IssuedAt DATETIME2 NOT NULL
+        IssuedAt DATETIME2 NOT NULL --Kartın oluşturulma tarihidir.
             CONSTRAINT DF_CreditCards_IssuedAt
             DEFAULT SYSDATETIME(),
 
-        ExpiresAt DATE NOT NULL,
+        ExpiresAt DATE NOT NULL,--Son kullanım tarihidir.
 
-        CONSTRAINT FK_CreditCards_Applications
+        CONSTRAINT FK_CreditCards_Applications --Kartın var olan bir başvuruya bağlanmasını sağlar.
             FOREIGN KEY (ApplicationID)
             REFERENCES dbo.CreditCardApplications(ApplicationID),
 
-        CONSTRAINT FK_CreditCards_Customers
+        CONSTRAINT FK_CreditCards_Customers --Kartın var olan bir kullanıcıya bağanmasını sağlar.
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID),
 
-        CONSTRAINT FK_CreditCards_Accounts
+        CONSTRAINT FK_CreditCards_Accounts --Kartın var olan bir hesaba bağlanmasını sağlar.
             FOREIGN KEY (LinkedAccountID)
             REFERENCES dbo.Accounts(AccountID),
 
@@ -490,10 +490,10 @@ BEGIN
         CONSTRAINT CK_CreditCards_Type
             CHECK (CardType IN ('Standard', 'Gold')),
 
-        CONSTRAINT CK_CreditCards_Limit
+        CONSTRAINT CK_CreditCards_Limit --Kart limiti negatif olamaz.
             CHECK (CreditLimit > 0),
 
-        CONSTRAINT CK_CreditCards_Balance
+        CONSTRAINT CK_CreditCards_Balance --Borç negatif ve kart limitinden fazla olamaz.
             CHECK
             (
                 OutstandingBalance >= 0
@@ -538,11 +538,11 @@ BEGIN
             CONSTRAINT DF_CreditCardTransactions_CreatedAt
             DEFAULT SYSDATETIME(),
 
-        CONSTRAINT FK_CreditCardTransactions_Cards
+        CONSTRAINT FK_CreditCardTransactions_Cards --Işlemin var olan bir karta aiat olmasını sağlar.
             FOREIGN KEY (CreditCardID)
             REFERENCES dbo.CreditCards(CreditCardID),
 
-        CONSTRAINT FK_CreditCardTransactions_BankTransaction
+        CONSTRAINT FK_CreditCardTransactions_BankTransaction --Banka işlemine ait olan taablodan referans alır.
             FOREIGN KEY (BankTransactionID)
             REFERENCES dbo.Transactions(TransactionID),
 
@@ -592,7 +592,7 @@ BEGIN
             CONSTRAINT DF_CustomerAddresses_Type
             DEFAULT 'Other',
 
-        AddressLine NVARCHAR(255) NOT NULL,
+        AddressLine NVARCHAR(255) NOT NULL, --Adresin asıl tutulduğu kısım
         City NVARCHAR(100) NULL,
         PostalCode NVARCHAR(20) NULL,
 
@@ -668,7 +668,7 @@ BEGIN
         DisplayName NVARCHAR(120) NOT NULL,
         AccountNumber VARCHAR(34) NOT NULL,
 
-        IsActive BIT NOT NULL
+        IsActive BIT NOT NULL  --Kullanıcının aktif adresinin varlığı tutulur.
             CONSTRAINT DF_Beneficiaries_Active
             DEFAULT 1,
 
@@ -676,11 +676,11 @@ BEGIN
             CONSTRAINT DF_Beneficiaries_Created
             DEFAULT SYSDATETIME(),
 
-        CONSTRAINT FK_Beneficiaries_Customers
+        CONSTRAINT FK_Beneficiaries_Customers --Adresi mevcut olan müşteriye bağlar.
             FOREIGN KEY (CustomerID)
             REFERENCES dbo.Customers(CustomerID),
 
-        CONSTRAINT UQ_Beneficiaries_Customer_Account
+        CONSTRAINT UQ_Beneficiaries_Customer_Account --Adresi mevcut müşterinin hesabına bağlar.
             UNIQUE (CustomerID, AccountNumber)
     );
 END;
@@ -692,7 +692,7 @@ GO
 
 IF OBJECT_ID(N'dbo.AccountStatusHistory', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.AccountStatusHistory
+    CREATE TABLE dbo.AccountStatusHistory --Hesabın önceki ve şu anki durumunu tutan tablodur.
     (
         StatusHistoryID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_AccountStatusHistory PRIMARY KEY,
@@ -759,7 +759,7 @@ GO
 
 IF OBJECT_ID(N'dbo.FraudAlertReviewHistory', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.FraudAlertReviewHistory
+    CREATE TABLE dbo.FraudAlertReviewHistory --Uyarı inceleme geçmişine ait detayları tutan tablodur.
     (
         ReviewHistoryID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_FraudAlertReviewHistory PRIMARY KEY,
@@ -830,10 +830,10 @@ BEGIN
         CONSTRAINT UQ_CreditCardBillingSettings_Card
             UNIQUE (CreditCardID),
 
-        CONSTRAINT CK_CreditCardBillingSettings_Closing
+        CONSTRAINT CK_CreditCardBillingSettings_Closing --Kesim gününü 1-28 aralığına sınırlar.BETWEEN iki ucu da dahil eder.
             CHECK (ClosingDay BETWEEN 1 AND 28),
 
-        CONSTRAINT CK_CreditCardBillingSettings_Due
+        CONSTRAINT CK_CreditCardBillingSettings_Due --Ödeme için gün sayısını da aynı aralıkta sınırlar.
             CHECK (DueDaysAfterClosing BETWEEN 1 AND 28)
     );
 END;
@@ -845,7 +845,7 @@ GO
 
 IF OBJECT_ID(N'dbo.AccountDailyBalances', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.AccountDailyBalances
+    CREATE TABLE dbo.AccountDailyBalances --Hesabın belirli bir güğne ait bakiye değerini saklar.
     (
         BalanceID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_AccountDailyBalances
@@ -861,7 +861,7 @@ BEGIN
             CONSTRAINT DF_AccountDailyBalances_RecordedAt
             DEFAULT SYSDATETIME(),
 
-        CONSTRAINT FK_AccountDailyBalances_Accounts
+        CONSTRAINT FK_AccountDailyBalances_Accounts --hesaba ait bakiye değerini accunt tablosundan referans alır.
             FOREIGN KEY (AccountID)
             REFERENCES dbo.Accounts(AccountID),
 
@@ -877,7 +877,7 @@ GO
 
 IF OBJECT_ID(N'dbo.FraudRiskAssessments', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbo.FraudRiskAssessments
+    CREATE TABLE dbo.FraudRiskAssessments --Uyarı risk ve inceleme durumunu değerlendiren bir tablodur.
     (
         AssessmentID BIGINT IDENTITY(1,1)
             CONSTRAINT PK_FraudRiskAssessments
@@ -933,7 +933,7 @@ GO
 -- Both tables must exist before this relationship is added.
 -- ============================================================
 
-IF NOT EXISTS
+IF NOT EXISTS --Alertin kart hareketine bağlanmasını sağlamak için önce iki tablonunda oluşturulması gerekiyor.
 (
     SELECT 1
     FROM sys.foreign_keys
@@ -954,7 +954,7 @@ GO
 -- Prevent duplicate alerts for the same rule and transaction.
 -- ============================================================
 
-IF NOT EXISTS
+IF NOT EXISTS --Uyarıların tekrar oluşmasını engelliyoruz.
 (
     SELECT 1
     FROM sys.indexes
@@ -962,7 +962,7 @@ IF NOT EXISTS
       AND object_id = OBJECT_ID(N'dbo.FraudAlerts')
 )
 BEGIN
-    CREATE UNIQUE INDEX UX_FraudAlerts_Transaction_Rule
+    CREATE UNIQUE INDEX UX_FraudAlerts_Transaction_Rule --Aynı anahtarın 2 kere oluşturulmasını engelliyor.
     ON dbo.FraudAlerts(TransactionID, RuleID)
     WHERE TransactionID IS NOT NULL;
 END;
@@ -986,12 +986,12 @@ GO
 -- 23. INITIAL SCHEMA VERIFICATION
 -- ============================================================
 
-DECLARE @TableCount INT;
+DECLARE @TableCount INT; --Kaç tablo olduğunu alırız.
 
 SELECT @TableCount = COUNT(*)
 FROM sys.tables
 WHERE schema_id = SCHEMA_ID(N'dbo')
-  AND is_ms_shipped = 0;
+  AND is_ms_shipped = 0; --windows tarafından sağlanan sistem nesnesi oalrak işaretlenen olanları dışarıda bırakır.
 
 SELECT @TableCount AS TotalApplicationTables;
 
@@ -1011,7 +1011,7 @@ GO
 -- ============================================================
 
 SELECT
-    ROW_NUMBER() OVER (ORDER BY t.name) AS RowNumber,
+    ROW_NUMBER() OVER (ORDER BY t.name) AS RowNumber, --İisim sırasına göre tabloları listeler.
     t.name AS TableName
 FROM sys.tables AS t
 WHERE t.schema_id = SCHEMA_ID(N'dbo')
@@ -1025,17 +1025,17 @@ GO
 
 SELECT
     fk.name AS ForeignKeyName,
-    OBJECT_NAME(fk.parent_object_id) AS ChildTable,
+    OBJECT_NAME(fk.parent_object_id) AS ChildTable,--Refereans alan tabloyu child tablo olarak alırız.
     pc.name AS ChildColumn,
-    OBJECT_NAME(fk.referenced_object_id) AS ParentTable,
+    OBJECT_NAME(fk.referenced_object_id) AS ParentTable, --Referans verilen kaydı parent tablo alırız.
     rc.name AS ParentColumn
 FROM sys.foreign_keys AS fk
 INNER JOIN sys.foreign_key_columns AS fkc
     ON fkc.constraint_object_id = fk.object_id
-INNER JOIN sys.columns AS pc
+INNER JOIN sys.columns AS pc --sütun kimliklerini sütun adına çevirir. (child column için)
     ON pc.object_id = fkc.parent_object_id
    AND pc.column_id = fkc.parent_column_id
-INNER JOIN sys.columns AS rc
+INNER JOIN sys.columns AS rc --sütun kimliklerini sütun adına çevirir. (parent column için)
     ON rc.object_id = fkc.referenced_object_id
    AND rc.column_id = fkc.referenced_column_id
 ORDER BY
